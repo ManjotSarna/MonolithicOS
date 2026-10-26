@@ -10,7 +10,9 @@ import android.view.accessibility.AccessibilityEvent;
  * Opt-in: the remote's app buttons, everywhere. With Google TV's launcher off, the YouTube button
  * (BUTTON_3, a "global key" Android hands only to that launcher) does nothing, and Netflix / Prime
  * only work while Home is on screen. Every other key passes straight through. The trade-off on this
- * TV: while any key-filtering service is bound, holding volume steps once instead of ramping.
+ * TV: while any key-filtering service is bound, holding volume steps once instead of ramping. That can't
+ * be fixed from here: TCL's input policy takes the volume keys before any service sees them (tested:
+ * none reach onKeyEvent), and the filter still costs them their auto-repeat.
  */
 public final class KeyHelper extends AccessibilityService {
     @Override

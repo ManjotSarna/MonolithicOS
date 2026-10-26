@@ -87,7 +87,8 @@ On Android, tap **Get** up top for the app. That's also where you set your name,
 - Built and tested on a TCL QM851G (Google TV 14). Should work on most Google TV / Android TV 9+ stuff
   (Chromecast with Google TV, Sony, Hisense...). Not Fire TV, Roku, Samsung or LG.
 - With Google's home screen off, the remote's YouTube button and voice search for shows don't work.
-  MonolithicOS Settings > App buttons > Everywhere brings the button back.
+  MonolithicOS Settings > App buttons > Everywhere brings the button back, but on TCL TVs holding volume
+  then only steps one notch at a time (the phone remote's volume still holds fine).
 - If a TV update turns Google's stuff back on, you'll get a banner. Just run the installer again.
 - It only talks to Open-Meteo (weather), ipapi.co (once, to guess your city), ESPN and Jolpica (cards, if you
   add any) and AdGuard DNS (if ad blocking is on).
