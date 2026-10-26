@@ -54,6 +54,19 @@
             </intent-filter>
         </activity>
 
+        <!-- A tile on Google TV's own home after a fresh install (or the Play Store): opens TV Setup. -->
+        <activity-alias
+            android:name=".Setup"
+            android:targetActivity=".HomeActivity"
+            android:exported="true"
+            android:label="MonolithicOS"
+            android:banner="@drawable/banner">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- Only here so the media sessions of other apps can be read for Now Playing. -->
         <service
             android:name=".NowPlayingListener"

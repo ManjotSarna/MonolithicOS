@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MonolithicOS Safety: installed by MonolithicOS when it switches Google TV's home off. A home screen of its
+     own, at priority -100: below MonolithicOS (0), above TV Settings' blank fallback home (-1000). So it never
+     shows while MonolithicOS is here, and if MonolithicOS is uninstalled it's what Home opens, with one button
+     back to Google TV. No permissions, nothing running. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.joe.home.guard">
+
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <application
+        android:label="MonolithicOS Safety"
+        android:allowBackup="false"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        <activity
+            android:name=".Rescue"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true">
+            <intent-filter android:priority="-100">
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

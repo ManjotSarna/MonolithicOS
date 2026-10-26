@@ -418,6 +418,10 @@ final class Remote {
             }
             case "/api/type": {
                 String result = TypeHelper.type(r.text(), "1".equals(r.q("enter")));
+                if ("off".equals(result) && Setup.type(app, r.text())) {   // no helper: through the TV's debugging
+                    if ("1".equals(r.q("enter"))) Setup.key(app, KeyEvent.KEYCODE_ENTER);
+                    result = "ok";
+                }
                 send(out, 200, "application/json", "{\"result\":\"" + result + "\"}");
                 return;
             }
@@ -651,8 +655,23 @@ final class Remote {
                 catch (RuntimeException e) { return "blocked"; }
                 return null;
             default:
-                return TypeHelper.press(k) ? null : TypeHelper.on() ? "unknown" : "helper";
+                if (TypeHelper.press(k)) return null;
+                if (TypeHelper.on()) return "unknown";
+                // no accessibility helper: through the TV's own debugging, if it's on (see Setup)
+                Integer code = KEYS.get(k);
+                return code != null && Setup.key(app, code) ? null : "helper";
         }
+    }
+
+    private static final Map<String, Integer> KEYS = new HashMap<>();
+    static {
+        KEYS.put("up", KeyEvent.KEYCODE_DPAD_UP);
+        KEYS.put("down", KeyEvent.KEYCODE_DPAD_DOWN);
+        KEYS.put("left", KeyEvent.KEYCODE_DPAD_LEFT);
+        KEYS.put("right", KeyEvent.KEYCODE_DPAD_RIGHT);
+        KEYS.put("ok", KeyEvent.KEYCODE_DPAD_CENTER);
+        KEYS.put("back", KeyEvent.KEYCODE_BACK);
+        KEYS.put("home", KeyEvent.KEYCODE_HOME);
     }
 
     private static void media(AudioManager audio, int code) {

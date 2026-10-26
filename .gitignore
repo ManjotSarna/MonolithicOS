@@ -4,6 +4,8 @@ remote/build/
 dist/
 # the phone app the launcher carries is built, not committed
 launcher/res/raw/remote_app.apk
+launcher/res/raw/guard.apk
+guard/build/
 # keys never go in
 *.jks
 # what the installer downloads and remembers

@@ -151,6 +151,9 @@ install_app() {
   out=$(tv am start -W -a android.intent.action.MAIN -c android.intent.category.HOME -n $ACT)
   case "$out" in *"Status: ok"*) ;; *) die "MonolithicOS didn't start, nothing else was changed: $out" ;; esac
   tv cmd package compile -m speed -f $PKG >/dev/null 2>&1   # compiled ahead of time: fast from the first press
+  # MonolithicOS Safety: a home of its own below MonolithicOS that only ever shows if MonolithicOS is uninstalled
+  # while Google's home is off, with the way back (otherwise: a blank screen, and only a computer gets out)
+  "$ADB" -s "$T" install -r "$HERE/MonolithicOS-Safety.apk" 2>&1 | grep -q Success || say "    ${Y}the safety app didn't install${N}"
   ok "installed and starts"
 
   # Now Playing (media sessions), wallpapers from Pictures, its screensaver, MonolithicOS Settings'
@@ -264,6 +267,7 @@ do_uninstall() {
   ok "apps, ad blocking and animations back to normal"
   restore_home
   ok "Google's Home screen is back"
+  "$ADB" -s "$T" uninstall com.joe.home.guard >/dev/null 2>&1
   "$ADB" -s "$T" uninstall $PKG >/dev/null 2>&1 && ok "MonolithicOS removed"
   say ""
   say "  ${G}${B}Done.${N} The TV is back to stock. Thanks for trying MonolithicOS."

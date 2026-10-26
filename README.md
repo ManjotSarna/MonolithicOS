@@ -66,9 +66,14 @@ launcher isn't running your TV in the background anymore.
   into what you paused.
 - **4 OLED wallpapers** built in, the Aurora (soft lights in the colour of the app you're on), or send your own
   photos from your phone.
+- **Task Manager.** CPU, memory, storage, temperature and every app running with its CPU and memory.
+  Force stop one, or free up memory in one press. Only runs while it's open.
 - **Optional debloat.** Turns off Google's ad services, TCL's junk and the preinstalled freebie apps (Tubi,
   Pluto and co).
-- **Nothing permanent.** No root. The uninstaller puts your TV back to stock in about 10 seconds.
+- **Nothing permanent, and no way to get stuck.** No root. The uninstaller puts your TV back to stock in about
+  10 seconds. A tiny safety app comes along: if MonolithicOS is ever removed while Google's home is off, it shows
+  one button back to Google TV. And if MonolithicOS keeps crashing, it starts in a bare safe mode with the same
+  way out.
 
 <p align="center">
   <img src="docs/wallpapers/horizon.jpg" width="24%" alt="Horizon">
@@ -89,6 +94,10 @@ You need the TV and a PC or Mac on the same Wi-Fi.
 
 Mac: right-click > Open the first time. Windows: if SmartScreen shows up, More info > Run anyway.
 Linux: `bash files/install.sh install`. The installer grabs Google's ADB tools on its own if you don't have them.
+
+**No computer?** Install `MonolithicOS.apk` with the free Downloader app (or Send Files to TV), turn on USB
+debugging as in step 1, then open MonolithicOS from Google TV's home: TV Setup switches Google's home off,
+debloats, and puts it all back, all from the TV.
 
 **Phone remote:** open `http://<tv-ip>:8899` on your phone. The PIN is in MonolithicOS Settings (last tile under Apps).
 On Android, tap **Get** up top for the app. That's also where you set your name, city, wallpaper and cards.
@@ -140,7 +149,7 @@ On Android, tap **Get** up top for the app. That's also where you set your name,
 
 ## Uninstall
 
-Double-click `Uninstall MonolithicOS`. Or on the TV: MonolithicOS Settings > Restore Google TV Home.
+Double-click `Uninstall MonolithicOS`. Or on the TV: MonolithicOS Settings > TV Setup > Restore Google TV Home.
 
 ## Build it
 

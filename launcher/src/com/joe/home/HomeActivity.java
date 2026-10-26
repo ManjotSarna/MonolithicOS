@@ -76,6 +76,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -174,12 +175,19 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     // the intro: black over the whole window while MonolithicOS's name draws together, then Home comes up
     private FrameLayout curtain;
     private long watchAt;
+    private boolean safe;   // crashed 3 times in a minute: a bare screen with the ways out (see SafeMode)
 
     // ---- lifecycle -------------------------------------------------------------------------
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        SafeMode.watch(this);
+        if (SafeMode.needed(this)) {
+            safe = true;
+            setContentView(SafeMode.screen(this, this::recreate));
+            return;
+        }
         DisplayMetrics m = getResources().getDisplayMetrics();
         density = m.density;
         screenW = m.widthPixels;
@@ -275,6 +283,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         applyLook();
         root.post(this::goTop);
         intro();   // whenever Home starts fresh: the TV coming on, after an update
+        if (setupIntent(getIntent())) handler.postDelayed(this::showSetup, 4500);   // after the intro
 
         IntentFilter f = new IntentFilter();
         f.addAction(Intent.ACTION_PACKAGE_ADDED);
@@ -321,6 +330,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     @Override
     protected void onResume() {
         super.onResume();
+        if (safe) return;
         greeting.setText(greetingText());
         if (prefs.getBoolean("photo", true) && !backdrop.hasPhoto() && !loading) {   // never made it: try again
             lookTries = 0;
@@ -351,6 +361,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     @Override
     protected void onPause() {
         super.onPause();
+        if (safe) return;
         pausedAt = SystemClock.uptimeMillis();
         if (moving != null) endMove();
         if (menu != null) closeMenu(false);
@@ -364,6 +375,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     @Override
     protected void onStop() {
         super.onStop();
+        if (safe) return;
         clearZoom();   // the app is on screen now; Home is clean when we come back
         if (resumeOnLeave != null) {   // Now Playing: the video's player is up, now it can play
             MediaController c = resumeOnLeave;
@@ -376,6 +388,8 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (safe) return;
+        if (setupIntent(intent)) { handler.post(this::showSetup); return; }
         // Home pressed while Home was already showing: back to the first tile, like Apple TV.
         if (SystemClock.uptimeMillis() - pausedAt < 500) goTop();
         // Home pressed in an app: the intro covers Home coming back, which then fades in under it
@@ -389,6 +403,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
 
     @Override
     protected void onDestroy() {
+        if (safe) { super.onDestroy(); return; }
         try { unregisterReceiver(packages); } catch (IllegalArgumentException ignored) { }
         prefs.unregisterOnSharedPreferenceChangeListener(prefsChanged);
         if (tvInputs != null) tvInputs.unregisterCallback(inputCallback);
@@ -404,6 +419,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        if (safe) return e.getKeyCode() == KeyEvent.KEYCODE_BACK || super.dispatchKeyEvent(e);   // Home has nowhere to go back to
         int k = e.getKeyCode();
         boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
         boolean up = e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled();
@@ -537,6 +553,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             if (!in.isEmpty()) all.add(folderTile(pm, g, in));
         }
         all.add(settingsTile());
+        all.add(tasksTile());
         addSection("Apps", all);
         if (lastLine != null) edges(lastLine, false, true);
         // The dock, the only row on screen at rest, is kept as a GPU texture: a frame that changes
@@ -791,6 +808,28 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         t.listener = this;
         t.setOnClickListener(v -> showSettings());
         t.setOnLongClickListener(v -> { showSettings(); return true; });
+        return t;
+    }
+
+    private Tile tasksTile() {
+        Tile t = new Tile(this, tileW, tileH, radius, 1.10f, "Task Manager", null, NEUTRAL, NEUTRAL2);
+        glass(t, radius, 0x40101014, 0xFF2E2E31);
+        LinearLayout stack = new LinearLayout(this);
+        stack.setOrientation(LinearLayout.VERTICAL);
+        stack.setGravity(Gravity.CENTER);
+        ImageView glyph = new ImageView(this);
+        glyph.setImageDrawable(new MeterGlyph(dp(2.6f)));
+        stack.addView(glyph, new LinearLayout.LayoutParams(dp(26), dp(22)));
+        TextView n = text(12, medium, Color.WHITE);
+        n.setGravity(Gravity.CENTER_HORIZONTAL);
+        n.setText("Task Manager");
+        n.setPadding(0, dp(8), 0, 0);
+        stack.addView(n);
+        t.addView(stack, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
+        t.listener = this;
+        t.setOnClickListener(v -> showTasks());
+        t.setOnLongClickListener(v -> { showTasks(); return true; });
         return t;
     }
 
@@ -1270,8 +1309,12 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             v.setNextFocusLeftId(v.getId());
             v.setNextFocusRightId(v.getId());
         }
-        items.get(0).setNextFocusUpId(items.get(0).getId());
-        items.get(items.size() - 1).setNextFocusDownId(items.get(items.size() - 1).getId());
+        // up and down chained item to item: left to its own search, focus could land on a card behind the panel
+        for (int i = 0; i < items.size(); i++) {
+            View v = items.get(i);
+            v.setNextFocusUpId(items.get(Math.max(0, i - 1)).getId());
+            v.setNextFocusDownId(items.get(Math.min(items.size() - 1, i + 1)).getId());
+        }
     }
 
     // ---- MonolithicOS Settings -----------------------------------------------------------------
@@ -1367,6 +1410,332 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         return out;
     }
 
+    // ---- TV Setup: what the computer installer does, from the TV (see Setup and Adb) ----
+
+    /** Opened from Google TV's home (a fresh install): straight to TV Setup. */
+    private boolean setupIntent(Intent i) {
+        return i != null && i.getComponent() != null && i.getComponent().getClassName().endsWith(".Setup");
+    }
+
+    private void showSetup() {
+        if (menu != null) return;
+        LinearLayout panel = openPanel("TV Setup", "Checking the TV...", dp(460));
+        TextView hint = (TextView) panel.getChildAt(1);
+        new Thread(() -> {
+            Setup.State st = Setup.state(this);
+            handler.post(() -> { if (menu != null && menu.getChildAt(0) == panel) fillSetup(panel, hint, st); });
+        }).start();
+    }
+
+    private void fillSetup(LinearLayout panel, TextView hint, Setup.State st) {
+        List<View> items = new ArrayList<>();
+        switch (st) {
+            case DEBUG_OFF:
+                hint.setText("One time: turn on USB debugging");
+                para(panel, "On the TV: Settings > System > About, click Android TV OS build 7 times. Then Settings > "
+                        + "System > Developer options, turn on USB debugging, and come back here.");
+                items.add(action(panel, "Open Developer Options", () -> {
+                    closeMenu(false);
+                    try { start(new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)); }
+                    catch (RuntimeException e) { start(new Intent(Settings.ACTION_SETTINGS)); }
+                }));
+                items.add(action(panel, "Check Again", this::againSetup));
+                break;
+            case NEED_ALLOW:
+                hint.setText("Let MonolithicOS set up the TV");
+                para(panel, "The TV will ask to allow USB debugging for MonolithicOS. Tick Always allow, then OK.");
+                items.add(action(panel, "Continue", () -> work(panel, hint, "Waiting for Allow on the TV...",
+                        Setup::allow, null)));
+                break;
+            case GOOGLE_HOME:
+                hint.setText("Google TV's home is still on");
+                para(panel, "Switch it off and MonolithicOS becomes the Home button, with Google's launcher not running "
+                        + "at all. A small safety app goes on too, so the TV always has a way back. Undo it here any time.");
+                items.add(action(panel, "Switch Google TV's Home Off", () -> work(panel, hint, "Switching...",
+                        Setup::switchOver, "Done. MonolithicOS is your Home")));
+                items.add(action(panel, "Debloat and Tune", () -> work(panel, hint, "Debloating...",
+                        Setup::debloat, "TCL and Google extras off, ads blocked")));
+                break;
+            case MONOLITHIC_HOME:
+                hint.setText("MonolithicOS is your Home. Google TV's is off");
+                para(panel, "Debloat switches off TCL and Google ad, promo and telemetry services, removes the "
+                        + "preinstalled freebie apps and blocks ads for the whole TV. Restore puts it all back.");
+                items.add(action(panel, "Debloat and Tune", () -> work(panel, hint, "Debloating...",
+                        Setup::debloat, "TCL and Google extras off, ads blocked")));
+                items.add(action(panel, "Restore Google TV Home", () -> work(panel, hint, "Putting Google TV back...",
+                        Setup::restore, "Google TV's home is back")));
+                break;
+        }
+        fence(items);
+        items.get(0).requestFocus();
+    }
+
+    private void para(LinearLayout panel, String s) {
+        TextView t = text(14, light, 0xB3FFFFFF);
+        t.setText(s);
+        t.setLineSpacing(0, 1.25f);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(18);
+        panel.addView(t, lp);
+    }
+
+    private TextView action(LinearLayout panel, String label, Runnable run) {
+        TextView b = menuItem(label);
+        b.setOnClickListener(v -> run.run());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(6);
+        panel.addView(b, lp);
+        return b;
+    }
+
+    private void againSetup() {
+        closeMenu(false);
+        handler.postDelayed(this::showSetup, 250);
+    }
+
+    /** Runs a setup step off the main thread (it can wait a minute for Allow), then shows where things stand. */
+    private void work(LinearLayout panel, TextView hint, String doing, java.util.function.Function<Context, String> step, String done) {
+        hint.setText(doing);
+        for (int i = 0; i < panel.getChildCount(); i++) panel.getChildAt(i).setFocusable(false);
+        panel.requestFocus();
+        new Thread(() -> {
+            String err = step.apply(getApplicationContext());
+            handler.post(() -> {
+                if (err != null) toast(err); else if (done != null) toast(done);
+                againSetup();
+            });
+        }).start();
+    }
+
+    // ---- Task Manager ----------------------------------------------------------------------
+
+    /** One app's line in the Task Manager. */
+    private static final class TaskRow {
+        LinearLayout view;
+        TextView name, cpu, mem;
+        String label;
+    }
+
+    /**
+     * What's running and how hard the TV is working: CPU, memory, storage, temperature, then every app with its
+     * CPU and memory; OK twice force stops one. Read every 3 seconds while it's open, nothing once it's closed.
+     */
+    private void showTasks() {
+        if (menu != null) return;
+        LinearLayout panel = openPanel("Task Manager", "Reading the TV...", dp(600));
+        FrameLayout mine = menu;
+        TextView hint = (TextView) panel.getChildAt(1);
+
+        LinearLayout stats = new LinearLayout(this);
+        stats.setOrientation(LinearLayout.HORIZONTAL);
+        String[] names = {"CPU", "Memory", "Storage", "Temperature", "On for"};
+        TextView[] vals = new TextView[names.length], labs = new TextView[names.length];
+        for (int i = 0; i < names.length; i++) {
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            vals[i] = text(22, light, Color.WHITE);
+            vals[i].setText("\u2013");
+            vals[i].setFontFeatureSettings("tnum");
+            labs[i] = text(11, light, 0x80FFFFFF);
+            labs[i].setText(names[i]);
+            labs[i].setPadding(0, dp(2), 0, 0);
+            col.addView(vals[i]);
+            col.addView(labs[i]);
+            stats.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        }
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        sl.leftMargin = dp(18);
+        sl.bottomMargin = dp(16);
+        panel.addView(stats, sl);
+
+        boolean[] adb = {false};
+        TextView free = menuItem("Free Up Memory");
+        panel.addView(free, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setPadding(dp(18), dp(18), dp(18), dp(6));
+        TextView[] heads = {text(11, medium, 0x66FFFFFF), text(11, medium, 0x66FFFFFF), text(11, medium, 0x66FFFFFF)};
+        heads[0].setText("APP");
+        heads[1].setText("CPU");
+        heads[2].setText("MEMORY");
+        heads[1].setGravity(Gravity.END);
+        heads[2].setGravity(Gravity.END);
+        head.addView(heads[0], new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        head.addView(heads[1], new LinearLayout.LayoutParams(dp(70), ViewGroup.LayoutParams.WRAP_CONTENT));
+        head.addView(heads[2], new LinearLayout.LayoutParams(dp(100), ViewGroup.LayoutParams.WRAP_CONTENT));
+        head.setVisibility(View.GONE);
+        panel.addView(head);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        scroll.setVerticalFadingEdgeEnabled(true);
+        scroll.setFadingEdgeLength(dp(36));
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(list);
+        panel.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        Map<String, TaskRow> rows = new LinkedHashMap<>();
+        String[] armed = {null};
+        long[] armedAt = {0};
+        Adb[] conn = {null};
+        ExecutorService io = Executors.newSingleThreadExecutor();
+        Supplier<Boolean> open = () -> menu == mine;
+        Runnable[] tick = new Runnable[1];
+
+        java.util.function.Consumer<Tasks.Snapshot> show = s -> {
+            adb[0] = s.adb;
+            vals[0].setText(s.cpu < 0 ? "\u2013" : Math.round(s.cpu) + "%");
+            vals[1].setText(Tasks.size(s.memUsed));
+            labs[1].setText("Memory of " + Tasks.size(s.memTotal));
+            vals[2].setText(Tasks.size(s.diskUsed));
+            labs[2].setText("Storage of " + Tasks.size(s.diskTotal));
+            vals[3].setText(s.temp < 0 ? "\u2013" : Math.round(s.temp) + "\u00B0C");
+            vals[4].setText(Tasks.uptime(s.uptime));
+            free.setText(s.adb ? "Free Up Memory" : "Set Up the TV's Debugging");
+            hint.setText(s.adb ? s.apps.size() + " apps running. OK twice on one force stops it"
+                    : "CPU, temperature and apps need the TV's debugging, from TV Setup");
+            head.setVisibility(s.adb ? View.VISIBLE : View.GONE);
+            Set<String> now = new HashSet<>();
+            boolean changed = false;
+            for (Tasks.App a : s.apps) {
+                now.add(a.pkg);
+                TaskRow r = rows.get(a.pkg);
+                if (r == null) {
+                    r = taskRow(a.pkg);
+                    TaskRow row = r;
+                    row.view.setOnClickListener(v -> {
+                        if (PKG_SELF.equals(a.pkg)) { toast("That's Home itself"); return; }
+                        if (a.pkg.equals(armed[0]) && SystemClock.uptimeMillis() - armedAt[0] < 4000) {
+                            armed[0] = null;
+                            row.name.setText(row.label);
+                            io.execute(() -> {
+                                try {
+                                    if (conn[0] != null) Tasks.forceStop(conn[0], a.pkg);
+                                    handler.post(() -> toast("Stopped " + row.label));
+                                } catch (IOException e) {
+                                    handler.post(() -> toast("Couldn't stop it"));
+                                }
+                            });
+                        } else {
+                            armed[0] = a.pkg;
+                            armedAt[0] = SystemClock.uptimeMillis();
+                            row.name.setText("OK again to force stop");
+                        }
+                    });
+                    row.view.setOnFocusChangeListener((v, has) -> {
+                        if (!has && a.pkg.equals(armed[0])) { armed[0] = null; row.name.setText(row.label); }
+                    });
+                    rows.put(a.pkg, r);
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT);
+                    lp.topMargin = dp(4);
+                    list.addView(r.view, lp);
+                    changed = true;
+                }
+                r.cpu.setText(a.cpu < 0.5f ? "0%" : Math.round(a.cpu) + "%");
+                r.mem.setText(Tasks.size(a.mem));
+            }
+            // gone since the last look (stopped, or Android cleared it): out of the list, focus to a neighbour
+            for (java.util.Iterator<Map.Entry<String, TaskRow>> it = rows.entrySet().iterator(); it.hasNext(); ) {
+                Map.Entry<String, TaskRow> e = it.next();
+                if (now.contains(e.getKey())) continue;
+                View v = e.getValue().view;
+                if (v.hasFocus()) {
+                    int i = list.indexOfChild(v);
+                    View next = i + 1 < list.getChildCount() ? list.getChildAt(i + 1) : i > 0 ? list.getChildAt(i - 1) : free;
+                    next.requestFocus();
+                }
+                list.removeView(v);
+                it.remove();
+                changed = true;
+            }
+            if (changed) {
+                List<View> items = new ArrayList<>();
+                items.add(free);
+                for (int i = 0; i < list.getChildCount(); i++) items.add(list.getChildAt(i));
+                fence(items);
+            }
+        };
+
+        tick[0] = () -> io.execute(() -> {
+            if (!open.get()) {   // closed: let go of the TV's debugging, stop for good
+                if (conn[0] != null) conn[0].close();
+                io.shutdown();
+                return;
+            }
+            if (conn[0] == null) {
+                try { conn[0] = Adb.connect(this, 0); } catch (IOException e) { conn[0] = null; }
+            }
+            Tasks.Snapshot s = Tasks.read(this, conn[0]);
+            if (!s.adb && conn[0] != null) { conn[0].close(); conn[0] = null; }
+            handler.post(() -> {
+                if (open.get()) show.accept(s);
+                handler.postDelayed(tick[0], 3000);   // one more after closing, to let go
+            });
+        });
+
+        free.setOnClickListener(v -> {
+            if (!adb[0]) { closeMenu(false); handler.post(this::showSetup); return; }
+            free.setText("Freeing up...");
+            io.execute(() -> {
+                try {
+                    long before = Tasks.read(this, null).memUsed;
+                    Tasks.freeUp(conn[0]);
+                    Thread.sleep(1200);
+                    long freed = Math.max(0, before - Tasks.read(this, null).memUsed);
+                    handler.post(() -> { free.setText("Free Up Memory"); toast("Freed " + Tasks.size(freed)); });
+                } catch (IOException | InterruptedException | NullPointerException e) {
+                    handler.post(() -> { free.setText("Free Up Memory"); toast("Couldn't free up memory"); });
+                }
+            });
+        });
+        List<View> first = new ArrayList<>();
+        first.add(free);
+        fence(first);
+        free.requestFocus();
+        tick[0].run();
+    }
+
+    private static final String PKG_SELF = "com.joe.home";
+
+    private TaskRow taskRow(String pkg) {
+        TaskRow r = new TaskRow();
+        r.label = Apps.label(prefs, pkg) != null ? Apps.label(prefs, pkg) : appLabel(pkg);
+        if (r.label.isEmpty()) r.label = pkg;
+        if (PKG_SELF.equals(pkg)) r.label = "MonolithicOS";
+        r.view = new LinearLayout(this);
+        r.view.setOrientation(LinearLayout.HORIZONTAL);
+        r.view.setGravity(Gravity.CENTER_VERTICAL);
+        r.view.setFocusable(true);
+        r.view.setClickable(true);
+        r.view.setPadding(dp(18), dp(11), dp(18), dp(11));
+        r.view.setBackground(pill());
+        r.name = text(16, medium, Color.WHITE);
+        r.name.setTextColor(focusColors(Color.BLACK, 0xE6FFFFFF));
+        r.name.setDuplicateParentStateEnabled(true);
+        r.name.setSingleLine(true);
+        r.name.setEllipsize(TextUtils.TruncateAt.END);
+        r.name.setText(r.label);
+        r.cpu = text(14, light, 0xB3FFFFFF);
+        r.mem = text(14, light, 0xB3FFFFFF);
+        for (TextView t : new TextView[]{r.cpu, r.mem}) {
+            t.setTextColor(focusColors(Color.BLACK, 0xB3FFFFFF));
+            t.setDuplicateParentStateEnabled(true);
+            t.setGravity(Gravity.END);
+            t.setFontFeatureSettings("tnum");
+        }
+        r.view.addView(r.name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        r.view.addView(r.cpu, new LinearLayout.LayoutParams(dp(70), ViewGroup.LayoutParams.WRAP_CONTENT));
+        r.view.addView(r.mem, new LinearLayout.LayoutParams(dp(100), ViewGroup.LayoutParams.WRAP_CONTENT));
+        return r;
+    }
+
     /** The hidden apps: OK brings one back. */
     private void showHidden() {
         if (menu != null) return;
@@ -1456,8 +1825,11 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             toast("Phones signed out. New PIN " + Remote.pin(this));
         });
         items.add(pin);
-        TextView google = menuItem("Restore Google TV Home");
-        google.setOnClickListener(v -> { closeMenu(false); appInfo(GOOGLE_HOME); });
+        TextView tasks = menuItem("Task Manager");   // what's running, how hard the TV is working
+        tasks.setOnClickListener(v -> { closeMenu(false); handler.post(this::showTasks); });
+        items.add(tasks);
+        TextView google = menuItem("TV Setup");   // Google TV's home off or back on, debloat: no computer needed
+        google.setOnClickListener(v -> { closeMenu(false); handler.post(this::showSetup); });
         items.add(google);
         for (int i = 0; i < items.size(); i++) {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,

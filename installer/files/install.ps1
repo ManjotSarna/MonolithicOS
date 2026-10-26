@@ -182,6 +182,10 @@ function Install-App {
     $out = Tv am start -W -a android.intent.action.MAIN -c android.intent.category.HOME -n $Act
     if ($out -notmatch "Status: ok") { Die "MonolithicOS didn't start, nothing else was changed: $out" }
     Tv cmd package compile -m speed -f $Pkg | Out-Null   # compiled ahead of time: fast from the first press
+    # MonolithicOS Safety: a home of its own below MonolithicOS that only ever shows if MonolithicOS is uninstalled
+    # while Google's home is off, with the way back (otherwise: a blank screen, and only a computer gets out)
+    $safety = Join-Path $Here "MonolithicOS-Safety.apk"
+    if ((Adb -s $script:T install -r $safety) -notmatch "Success") { Write-Host "    the safety app didn't install" -ForegroundColor Yellow }
     Ok "installed and starts"
 
     # Now Playing (media sessions), wallpapers from Pictures, its screensaver, MonolithicOS Settings'
@@ -303,6 +307,7 @@ function Do-Uninstall {
     Ok "apps, ad blocking and animations back to normal"
     Restore-Home
     Ok "Google's Home screen is back"
+    Adb -s $script:T uninstall com.joe.home.guard | Out-Null
     if ((Adb -s $script:T uninstall $Pkg) -match "Success") { Ok "MonolithicOS removed" }
     Say ""
     Write-Host "  Done. The TV is back to stock. Thanks for trying MonolithicOS." -ForegroundColor Green
