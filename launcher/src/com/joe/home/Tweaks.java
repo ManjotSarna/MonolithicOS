@@ -21,7 +21,6 @@ final class Tweaks {
     static final String AMBIENT = "com.joe.home/com.joe.home.AmbientDream";
     static final String GOOGLE_DREAM = "com.google.android.apps.tv.dreamx/.service.Backdrop";
     static final String TYPE_HELPER = "com.joe.home/com.joe.home.TypeHelper";
-    static final String KEY_HELPER = "com.joe.home/com.joe.home.KeyHelper";
     private static final String[] SCALES = {Settings.Global.WINDOW_ANIMATION_SCALE,
             Settings.Global.TRANSITION_ANIMATION_SCALE, Settings.Global.ANIMATOR_DURATION_SCALE};
 

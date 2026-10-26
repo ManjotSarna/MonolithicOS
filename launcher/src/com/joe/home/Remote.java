@@ -650,7 +650,6 @@ final class Remote {
             case "adblock": Tweaks.setAdblock(app, on); return null;
             case "fast": Tweaks.setFast(app, on); return null;
             case "ambient": Tweaks.setAmbient(app, on); return null;
-            case "buttons": Tweaks.setService(app, Tweaks.KEY_HELPER, on); return null;
             default: return "unknown";
         }
     }
@@ -740,7 +739,6 @@ final class Remote {
                 .append(",\"adblock\":").append(Tweaks.adblock(app))
                 .append(",\"fast\":").append(Tweaks.fast(app))
                 .append(",\"ambient\":").append(Tweaks.ambient(app))
-                .append(",\"buttons\":").append(Tweaks.service(app, Tweaks.KEY_HELPER))
                 .append('}');
 
         j.append(",\"cards\":").append(prefs.getString("cards", "[]"));

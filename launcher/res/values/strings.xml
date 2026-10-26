@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="key_helper">Makes the remote\'s YouTube, Netflix and Prime Video buttons work everywhere.</string>
     <string name="type_helper">Lets the MonolithicOS phone page move around, go back and home, and type into the selected text box.</string>
 </resources>

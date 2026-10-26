@@ -890,10 +890,6 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
                 () -> Tweaks.fast(this) ? 0 : 1, i -> Tweaks.setFast(this, i == 0)));
         out.add(new Choice("Screensaver", true, new String[]{"MonolithicOS", "Google TV"},
                 () -> Tweaks.ambient(this) ? 0 : 1, i -> Tweaks.setAmbient(this, i == 0)));
-        out.add(new Choice("App buttons", true, new String[]{"On Home", "Everywhere"},
-                () -> Tweaks.service(this, Tweaks.KEY_HELPER) ? 1 : 0,
-                i -> Tweaks.setService(this, Tweaks.KEY_HELPER, i == 1))
-                .note(() -> "Everywhere: holding volume steps once"));
         out.add(new Choice("Cards", false, new String[]{"Show", "Hide"},
                 () -> prefs.getBoolean("cards_on", true) ? 0 : 1,
                 i -> prefs.edit().putBoolean("cards_on", i == 0).apply())

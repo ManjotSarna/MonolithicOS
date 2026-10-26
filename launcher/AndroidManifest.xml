@@ -75,19 +75,6 @@
             </intent-filter>
         </service>
 
-        <!-- Opt-in (MonolithicOS Settings > App buttons > Everywhere): answers the remote's YouTube, Netflix and Prime
-             buttons everywhere. Any key filter stops held volume from repeating on this TV. -->
-        <service
-            android:name=".KeyHelper"
-            android:exported="true"
-            android:label="MonolithicOS remote buttons"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data android:name="android.accessibilityservice" android:resource="@xml/key_helper" />
-        </service>
-
         <!-- The installer snapshots the good state here (SNAPSHOT) or stops the watch (FORGET, uninstaller);
              at boot it checks whether a TCL update put Google TV's launcher back. -->
         <receiver

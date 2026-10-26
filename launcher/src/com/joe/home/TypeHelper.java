@@ -9,7 +9,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 
 /**
  * The phone page's hands on the TV: D-pad, Back and Home as accessibility actions, and typing into
- * whatever text box has focus. Unlike KeyHelper it never filters keys, so the real remote (held
+ * whatever text box has focus. It never filters keys, so the real remote (held
  * volume included) is untouched. Being bound also keeps the phone page's server running while an
  * app is on screen.
  */
