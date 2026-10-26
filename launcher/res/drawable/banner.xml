@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 320x180 banner: black card with a thin white "home" mark. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <size android:width="320px" android:height="180px" />
+            <gradient android:angle="270" android:startColor="#FF1C1C1E" android:endColor="#FF000000" />
+        </shape>
+    </item>
+    <item android:gravity="center" android:width="64px" android:height="64px">
+        <shape android:shape="oval">
+            <stroke android:width="5px" android:color="#FFFFFFFF" />
+        </shape>
+    </item>
+</layer-list>

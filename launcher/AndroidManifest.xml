@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.joe.home">
+
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <!-- Weather from Open-Meteo (no account, no location permission: the city is fixed). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The screensaver's photo in Pictures/Wallpapers. Granted with pm grant by the installer. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- MonolithicOS Settings' TV-wide switches (DNS, animations, screensaver, helpers). Granted with
+         pm grant by the installer; Android never offers it to apps. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <!-- Lets the phone page open apps and inputs while another app is on screen (appops by the installer). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- The update watchdog compares every package's on/off state with the snapshot taken at setup,
+         and checks once at boot. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Which apps to show: anything with a TV launcher entry. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+        <package android:name="com.google.android.apps.tv.launcherx" />
+    </queries>
+
+    <application
+        android:label="MonolithicOS"
+        android:icon="@drawable/banner"
+        android:banner="@drawable/banner"
+        android:theme="@style/Home"
+        android:hardwareAccelerated="true"
+        android:allowBackup="false"
+        android:supportsRtl="true">
+
+        <activity
+            android:name=".HomeActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
+            android:excludeFromRecents="true"
+            android:clearTaskOnLaunch="true"
+            android:resumeWhilePausing="true"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density|fontScale|locale|layoutDirection">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Only here so the media sessions of other apps can be read for Now Playing. -->
+        <service
+            android:name=".NowPlayingListener"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".AmbientDream"
+            android:exported="true"
+            android:label="MonolithicOS Ambient"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
+        <!-- Opt-in (MonolithicOS Settings > App buttons > Everywhere): answers the remote's YouTube, Netflix and Prime
+             buttons everywhere. Any key filter stops held volume from repeating on this TV. -->
+        <service
+            android:name=".KeyHelper"
+            android:exported="true"
+            android:label="MonolithicOS remote buttons"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/key_helper" />
+        </service>
+
+        <!-- The installer snapshots the good state here (SNAPSHOT) or stops the watch (FORGET, uninstaller);
+             at boot it checks whether a TCL update put Google TV's launcher back. -->
+        <receiver
+            android:name=".Watchdog$Receiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.joe.home.SNAPSHOT" />
+                <action android:name="com.joe.home.FORGET" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- The phone page's D-pad, Back/Home and typing. No key filter, so held volume still ramps. -->
+        <service
+            android:name=".TypeHelper"
+            android:exported="true"
+            android:label="MonolithicOS phone remote"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/type_helper" />
+        </service>
+    </application>
+</manifest>

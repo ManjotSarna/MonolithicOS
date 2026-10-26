@@ -1,0 +1,27 @@
+MONOLITHICOS
+The Apple TV-style home screen for Google TV.
+https://github.com/ManjotSarna/MonolithicOS
+
+INSTALL (about 2 minutes)
+
+1. On the TV, one time:
+   Settings > System > About > press OK on "Android TV OS build" 7 times.
+   Settings > System > Developer options > turn on "USB debugging".
+   Settings > Network & Internet > your Wi-Fi: note the TV's IP address.
+
+2. Double-click:
+   Windows:  Install MonolithicOS (Windows).bat
+             (if Windows says it protected your PC: More info > Run anyway)
+   Mac:      Install MonolithicOS (Mac).command
+             (the first time: right-click it > Open > Open)
+   Linux:    bash files/install.sh install
+
+3. Type the TV's IP, press Allow on the TV, answer one question. Done.
+
+PHONE REMOTE
+On your phone (same Wi-Fi) open http://<tv-ip>:8899 and type the PIN from
+MonolithicOS Settings > Phone remote (the last tile under Apps on the TV).
+Android: tap Get there for the full-screen app (files/MonolithicOS-Remote.apk).
+
+UNINSTALL
+Double-click "Uninstall MonolithicOS". About 10 seconds, the TV is back to stock.

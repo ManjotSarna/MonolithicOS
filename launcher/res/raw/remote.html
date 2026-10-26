@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<title>MonolithicOS Remote</title>
+<style>
+:root{--glass:rgba(255,255,255,.07);--glass2:rgba(255,255,255,.12);--line:rgba(255,255,255,.12);--dim:rgba(255,255,255,.58);--faint:rgba(255,255,255,.36);--blue:#0a84ff;--green:#30d158}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:#000;color:#fff;font:16px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text",Roboto,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+body{min-height:100dvh;user-select:none;-webkit-user-select:none;background:transparent}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit;color:#fff}
+[hidden]{display:none!important}
+svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.aurora{position:fixed;inset:-25%;z-index:-1;pointer-events:none;
+  background:radial-gradient(38% 30% at 22% 12%,var(--a1,rgba(46,107,255,.38)),transparent 70%),
+             radial-gradient(34% 28% at 88% 6%,var(--a2,rgba(176,77,255,.30)),transparent 70%),
+             radial-gradient(60% 40% at 50% 112%,rgba(20,200,180,.10),transparent 70%);transition:background 1s}
+.glass{background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(26px) saturate(170%);-webkit-backdrop-filter:blur(26px) saturate(170%);
+  box-shadow:inset 1px 1px 0 rgba(255,255,255,.14),inset -1px -1px 0 rgba(255,255,255,.03),0 12px 32px rgba(0,0,0,.4)}
+main{max-width:460px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 14px) 18px calc(env(safe-area-inset-bottom) + 104px)}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;margin-bottom:16px}
+.brand{font-size:28px;font-weight:700;letter-spacing:-.02em}
+.brand small{display:block;font-size:12px;font-weight:500;color:var(--faint);letter-spacing:.06em;text-transform:uppercase}
+h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:26px 4px 10px}
+.note{font-size:14px;color:var(--dim);padding:12px 14px;border-radius:16px;margin-bottom:14px}
+.note b{color:#fff;font-weight:600}
+.getapp{display:flex;align-items:center;gap:12px;padding:12px 10px 12px 14px}
+.getapp div{flex:1;min-width:0}.getapp b{display:block}.getapp span{display:block;font-size:13px;margin-top:2px}
+.getapp .go{background:#fff;color:#000;font-weight:600;font-size:14px;padding:8px 16px;border-radius:16px;text-decoration:none;flex:none}
+.getapp .x{color:var(--faint);padding:4px;flex:none}.getapp .x svg{width:18px;height:18px}
+.note.warn{color:#fff;border-color:rgba(255,159,10,.45)}
+.note.warn::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:#ff9f0a;margin-right:9px;vertical-align:1px}
+
+/* now playing */
+.np{display:flex;align-items:center;gap:12px;border-radius:20px;padding:10px 10px 10px 14px;margin-bottom:16px}
+.np-text{flex:1;min-width:0}
+.np-text b{display:block;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.np-text span{display:block;font-size:13px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.round{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:var(--glass2);transition:transform .15s,background .15s}
+.round:active{transform:scale(.9);background:rgba(255,255,255,.22)}
+
+/* touchpad */
+.pad{position:relative;aspect-ratio:1/1;border-radius:38px;touch-action:none;overflow:hidden;display:grid;place-items:center}
+.pad .hint{position:absolute;color:var(--faint);transition:transform .18s,color .18s}
+.pad .h-up{top:16px}.pad .h-down{bottom:16px;transform:rotate(180deg)}
+.pad .h-left{left:16px;transform:rotate(-90deg)}.pad .h-right{right:16px;transform:rotate(90deg)}
+.pad .ok{width:84px;height:84px;border-radius:50%;border:1.5px solid rgba(255,255,255,.18);transition:transform .15s,background .15s}
+.pad.press .ok{transform:scale(.9);background:rgba(255,255,255,.1)}
+.pad .glow{position:absolute;width:70%;height:70%;border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,.12),transparent);transition:transform .22s cubic-bezier(.2,0,0,1);pointer-events:none}
+.pad.n-up .glow{transform:translateY(-14%)}.pad.n-down .glow{transform:translateY(14%)}
+.pad.n-left .glow{transform:translateX(-14%)}.pad.n-right .glow{transform:translateX(14%)}
+.pad.n-up .h-up,.pad.n-down .h-down,.pad.n-left .h-left,.pad.n-right .h-right{color:#fff}
+.ripple{position:absolute;width:90px;height:90px;margin:-45px 0 0 -45px;border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,.28),transparent);pointer-events:none;animation:rip .5s ease-out forwards}
+@keyframes rip{from{transform:scale(.3);opacity:1}to{transform:scale(1.6);opacity:0}}
+
+.buttons{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}
+.btn{height:60px;border-radius:22px;display:grid;place-items:center;transition:transform .12s,background .12s}
+.btn:active{transform:scale(.94);background:rgba(255,255,255,.16)}
+.vol{display:grid;grid-template-columns:1fr 1px 1fr 1px 1fr;align-items:center;height:60px;border-radius:22px;margin-top:12px;overflow:hidden}
+.vol .sep{height:26px;background:var(--line)}
+.vol button{height:100%;display:grid;place-items:center;transition:background .12s}
+.vol button:active{background:rgba(255,255,255,.14)}
+
+.type{border-radius:22px;padding:6px 6px 6px 16px;display:flex;align-items:center;gap:8px;margin-top:12px}
+.type input{flex:1;min-width:0;background:none;border:0;outline:0;font-size:17px;padding:12px 0;user-select:text;-webkit-user-select:text}
+.type input::placeholder{color:var(--faint)}
+.go{height:44px;padding:0 16px;border-radius:16px;background:#fff;color:#000;font-weight:600;font-size:15px;transition:transform .12s}
+.go:active{transform:scale(.94)}
+.status{font-size:13px;color:var(--dim);margin:8px 6px 0;min-height:18px}
+
+/* apps and inputs */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 12px}
+.app{display:flex;flex-direction:column;gap:7px;align-items:stretch;text-align:center}
+.app .art{aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:var(--glass);border:1px solid var(--line);display:grid;place-items:center;transition:transform .18s cubic-bezier(.2,0,0,1),box-shadow .18s}
+.app .art img{width:100%;height:100%;object-fit:cover;display:block}
+.app .art.icon img{width:42%;height:auto;object-fit:contain}
+.app span{font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app:active .art{transform:scale(.93)}
+.list{display:flex;flex-direction:column;gap:10px}
+.input{display:flex;align-items:center;gap:14px;border-radius:20px;padding:14px 14px 14px 16px;text-align:left;width:100%}
+.input .dot{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.18);flex:none}
+.input .dot.on{background:var(--green);box-shadow:0 0 10px rgba(48,209,88,.7)}
+.input .words{flex:1;min-width:0}
+.input b{display:block;font-weight:600;font-size:16px}
+.input span{font-size:13px;color:var(--dim)}
+.input .ren{font-size:13px;color:var(--blue);padding:8px 4px}
+
+/* wallpapers */
+.strip{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:4px 2px 8px;margin:0 -2px;scrollbar-width:none}
+.strip::-webkit-scrollbar{display:none}
+.wall{position:relative;flex:none;width:150px;aspect-ratio:16/9;border-radius:14px;overflow:hidden;scroll-snap-align:start;border:1px solid var(--line);background:var(--glass)}
+.wall img{width:100%;height:100%;object-fit:cover;display:block}
+.wall.on{outline:2.5px solid #fff;outline-offset:2px}
+.wall .x{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.55);display:grid;place-items:center;font-size:15px;line-height:1}
+.wall.add{display:grid;place-items:center;color:var(--dim);font-size:13px;gap:4px;align-content:center;justify-items:center}
+
+/* settings rows */
+.card{border-radius:22px;overflow:hidden}
+.set{display:flex;align-items:center;gap:12px;padding:14px 16px;min-height:58px}
+.set + .set{border-top:1px solid rgba(255,255,255,.07)}
+.set .words{flex:1;min-width:0}
+.set b{display:block;font-weight:500;font-size:16px}
+.set small{display:block;font-size:12.5px;color:var(--dim);margin-top:2px}
+.set.off{opacity:.45}
+.sw{position:relative;width:51px;height:31px;border-radius:16px;background:rgba(255,255,255,.16);flex:none;transition:background .2s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.3);transition:transform .25s cubic-bezier(.3,1.4,.5,1)}
+.sw.on{background:var(--green)}.sw.on::after{transform:translateX(20px)}
+.set.slider{flex-wrap:wrap;row-gap:4px}
+.set .val{font-size:15px;color:var(--dim);font-variant-numeric:tabular-nums}
+.range{flex:1 0 100%;-webkit-appearance:none;appearance:none;height:30px;background:transparent;margin:0}
+.range::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(90deg,rgba(255,255,255,.85) var(--p,20%),rgba(255,255,255,.16) var(--p,20%))}
+.range::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.35);margin-top:-10px}
+.seg{display:flex;background:rgba(255,255,255,.09);border-radius:12px;padding:2px;flex:none}
+.seg button{font-size:13px;font-weight:500;padding:7px 11px;border-radius:10px;color:var(--dim);transition:background .2s,color .2s}
+.seg button.on{background:rgba(255,255,255,.9);color:#000}
+.set .field{flex:0 1 52%;min-width:0;text-align:right;background:transparent;border:0;outline:0;font-size:16px;color:var(--dim);padding:6px 0;user-select:text;-webkit-user-select:text}
+.set .field:focus{color:#fff}
+.cardrow{display:flex;align-items:center;gap:12px;padding:12px 14px}
+.cardrow + .cardrow{border-top:1px solid rgba(255,255,255,.07)}
+.cardrow .badge{width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.1);display:grid;place-items:center;flex:none;overflow:hidden;font-weight:700;font-size:13px}
+.cardrow .badge img{width:30px;height:30px;object-fit:contain}
+.cardrow .words{flex:1;min-width:0}.cardrow b{display:block;font-weight:500}.cardrow small{display:block;font-size:12.5px;color:var(--dim)}
+.cardrow .x{color:var(--faint);padding:6px;flex:none}.cardrow .x svg{width:18px;height:18px}
+.cards-empty{padding:16px;font-size:14px;color:var(--dim)}
+.addcards{display:flex;gap:10px;margin-top:12px}
+.addcards button{flex:1;padding:13px;border-radius:18px;font-size:15px;font-weight:600}
+.addcards button[disabled]{opacity:.35}
+.sheet{position:fixed;inset:0;z-index:8;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.45)}
+.sheet .box{width:100%;max-width:460px;max-height:82vh;display:flex;flex-direction:column;border-radius:28px 28px 0 0;padding:18px 16px calc(env(safe-area-inset-bottom) + 16px)}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;margin:2px 4px 12px}
+.sheet-head b{font-size:18px}
+.sheet input{width:100%;font-size:17px;background:rgba(255,255,255,.08);border:1px solid var(--line);border-radius:16px;padding:12px 14px;outline:0;user-select:text;-webkit-user-select:text}
+.results{overflow-y:auto;margin-top:10px;-webkit-overflow-scrolling:touch}
+.results .cardrow{cursor:pointer}
+.small-print{font-size:12.5px;color:var(--faint);margin:10px 6px 0;line-height:1.45}
+
+/* tab bar */
+.tabs{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 14px);transform:translateX(-50%);display:flex;gap:4px;padding:5px;border-radius:26px;z-index:5}
+.tabs button{display:flex;align-items:center;gap:7px;padding:10px 16px;border-radius:21px;font-size:14px;font-weight:600;color:var(--dim);transition:background .25s,color .25s}
+.tabs button svg{width:20px;height:20px}
+.tabs button.on{background:#fff;color:#000}
+
+/* PIN */
+.login{position:fixed;inset:0;display:grid;place-items:center;padding:24px;z-index:9}
+.login .box{width:100%;max-width:360px;border-radius:30px;padding:30px 24px;text-align:center}
+.login h1{margin:0 0 6px;font-size:24px;letter-spacing:-.01em}
+.login p{margin:0 0 22px;color:var(--dim);font-size:15px}
+.pin{width:100%;font-size:34px;letter-spacing:.6em;text-indent:.6em;text-align:center;background:rgba(255,255,255,.08);border:1px solid var(--line);border-radius:18px;padding:14px 0;outline:0;user-select:text;-webkit-user-select:text}
+.pin:focus{border-color:rgba(255,255,255,.4)}
+.shake{animation:shake .4s}
+@keyframes shake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+
+.toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 12px);transform:translate(-50%,-140%);padding:11px 18px;border-radius:18px;font-size:14px;font-weight:500;z-index:10;transition:transform .35s cubic-bezier(.2,0,0,1);max-width:calc(100% - 32px);text-align:center}
+.toast.show{transform:translate(-50%,0)}
+.tab{animation:fade .3s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="aurora" id="aurora"></div>
+
+<main id="app" hidden>
+  <header>
+    <div class="brand"><small>MonolithicOS</small>Remote</div>
+    <button class="round glass" id="tvSettings" aria-label="TV settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </header>
+
+  <div class="np glass" id="np" hidden>
+    <div class="np-text"><b id="npTitle"></b><span id="npSub"></span></div>
+    <button class="round" id="npBtn" aria-label="Play or pause"></button>
+  </div>
+
+  <section class="tab" id="tab-remote">
+    <div class="note glass getapp" id="getApp" hidden>
+      <div><b>Get the MonolithicOS app</b><span>Full screen, no browser bar, and it finds the TV by itself.</span></div>
+      <a class="go" href="/app" download="MonolithicOS.apk">Get</a>
+      <button class="x" id="getAppX" aria-label="Not now"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
+    </div>
+    <div class="note glass warn" id="watchNote" hidden></div>
+    <div class="note glass" id="helperNote" hidden>Turn on <b>Phone remote</b> in MonolithicOS Settings on the TV for the touchpad and typing.</div>
+    <div class="pad glass" id="pad">
+      <div class="glow"></div>
+      <svg class="hint h-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>
+      <svg class="hint h-down" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>
+      <svg class="hint h-left" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>
+      <svg class="hint h-right" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>
+      <div class="ok"></div>
+    </div>
+    <div class="buttons">
+      <button class="btn glass" data-key="back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M14.5 5.5L8 12l6.5 6.5"/></svg></button>
+      <button class="btn glass" data-key="home" aria-label="Home"><svg viewBox="0 0 24 24"><path d="M4 10.5L12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/></svg></button>
+      <button class="btn glass" data-key="playpause" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path d="M4.5 6.5v11l8-5.5z"/><path d="M16 6.5v11M20 6.5v11"/></svg></button>
+    </div>
+    <div class="vol glass">
+      <button data-key="voldown" data-repeat aria-label="Volume down"><svg viewBox="0 0 24 24"><path d="M4 9.5h3l4.5-4v13L7 14.5H4z"/><path d="M15.5 12h5"/></svg></button>
+      <div class="sep"></div>
+      <button data-key="mute" aria-label="Mute"><svg viewBox="0 0 24 24"><path d="M4 9.5h3l4.5-4v13L7 14.5H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg></button>
+      <div class="sep"></div>
+      <button data-key="volup" data-repeat aria-label="Volume up"><svg viewBox="0 0 24 24"><path d="M4 9.5h3l4.5-4v13L7 14.5H4z"/><path d="M15.5 12h5M18 9.5v5"/></svg></button>
+    </div>
+    <form class="type glass" id="typeForm" autocomplete="off">
+      <input id="typeBox" placeholder="Type on the TV" enterkeyhint="search" autocapitalize="off" spellcheck="false">
+      <button class="go" type="submit">Go</button>
+    </form>
+    <div class="status" id="typeStatus"></div>
+  </section>
+
+  <section class="tab" id="tab-apps" hidden>
+    <h2>Apps</h2>
+    <div class="grid" id="apps"></div>
+    <h2 id="inputsHead">Inputs</h2>
+    <div class="list" id="inputs"></div>
+  </section>
+
+  <section class="tab" id="tab-look" hidden>
+    <h2>Wallpaper</h2>
+    <div class="strip" id="walls"></div>
+    <h2>Home screen</h2>
+    <div class="card glass" id="homeRows"></div>
+    <h2>Cards</h2>
+    <div class="card glass" id="cardList"></div>
+    <div class="addcards"><button class="glass" id="addF1">+ F1</button><button class="glass" id="addTeam">+ Team</button></div>
+    <p class="small-print">They sit under the clock: the next race or game, live scores, results. F1 and up to three teams: football in the big leagues, NFL, NBA, WNBA, NHL, MLB.</p>
+    <h2>TV</h2>
+    <div class="card glass" id="tvRows"></div>
+    <p class="small-print" id="tvNote"></p>
+  </section>
+</main>
+
+<nav class="tabs glass" id="tabs" hidden>
+  <button class="on" data-tab="remote"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="3.5"/><circle cx="12" cy="8.5" r="2.2"/></svg>Remote</button>
+  <button data-tab="apps"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>Apps</button>
+  <button data-tab="look"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 16l5-5 4 4 3-3 6 6"/><circle cx="16" cy="9" r="1.5"/></svg>Look</button>
+</nav>
+
+<div class="login" id="login" hidden>
+  <div class="box glass" id="loginBox">
+    <h1>MonolithicOS Remote</h1>
+    <p id="loginMsg">Enter the PIN shown in MonolithicOS Settings on the TV.</p>
+    <input class="pin" id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code">
+  </div>
+</div>
+
+<div class="sheet" id="teamSheet" hidden>
+  <div class="box glass">
+    <div class="sheet-head"><b>Add a team</b><button class="x" id="teamClose" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></button></div>
+    <input id="teamQ" placeholder="Search: Arsenal, Lakers, Chiefs..." autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="results" id="teamResults"></div>
+  </div>
+</div>
+
+<div class="toast glass" id="toast"></div>
+<input type="file" id="file" accept="image/*" hidden>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms || 8); } catch (e) {} };
+let state = null, appsSig = "", inputsSig = "", wallsSig = "", tab = "remote";
+
+let toastTimer;
+function toast(msg, ms) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), ms || 2200);
+}
+
+async function api(path, body, headers) {
+  const r = await fetch(path, { method: body === undefined ? "GET" : "POST", body: body === undefined ? undefined : body,
+    headers: headers || {}, credentials: "same-origin" });
+  if (r.status === 401) { showLogin(); throw new Error("pin"); }
+  let data = null;
+  if ((r.headers.get("content-type") || "").includes("json")) data = await r.json();
+  if (!r.ok) { const e = new Error((data && data.error) || String(r.status)); e.status = r.status; e.data = data; throw e; }
+  return data;
+}
+
+// ---- PIN ----
+function showLogin() {
+  $("#app").hidden = true; $("#tabs").hidden = true; $("#login").hidden = false;
+  setTimeout(() => $("#pin").focus(), 50);
+}
+$("#pin").addEventListener("input", async e => {
+  const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+  e.target.value = v;
+  if (v.length < 4) return;
+  try {
+    await api("/api/pin", v);
+    $("#login").hidden = true;
+    e.target.value = "";
+    await refresh();
+  } catch (err) {
+    e.target.value = "";
+    const box = $("#loginBox");
+    box.classList.remove("shake"); void box.offsetWidth; box.classList.add("shake");
+    buzz([30, 40, 30]);
+    $("#loginMsg").textContent = err.status === 429
+      ? "Too many tries. Wait " + ((err.data && err.data.seconds) || 60) + " seconds."
+      : "That's not it. Check MonolithicOS Settings on the TV.";
+  }
+});
+
+// ---- keys ----
+async function key(k) {
+  buzz();
+  try { await api("/api/key?k=" + k, ""); }
+  catch (e) {
+    if (e.message === "helper") toast("Turn on Phone remote in MonolithicOS Settings");
+    else if (e.message !== "pin") toast("Couldn't reach the TV");
+  }
+}
+document.querySelectorAll("[data-key]").forEach(b => {
+  let rep, delay;
+  const stop = () => { clearTimeout(delay); clearInterval(rep); };
+  b.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    key(b.dataset.key);
+    if (b.hasAttribute("data-repeat")) delay = setTimeout(() => { rep = setInterval(() => key(b.dataset.key), 140); }, 420);
+  });
+  ["pointerup", "pointerleave", "pointercancel"].forEach(ev => b.addEventListener(ev, stop));
+});
+
+// ---- touchpad: swipe to move (keep sliding for more), tap the middle for OK, tap an edge to step ----
+(() => {
+  const pad = $("#pad");
+  let sx = null, sy, t0, moved, nudgeTimer;
+  const STEP = 40;
+  function nudge(dir) {
+    pad.classList.remove("n-up", "n-down", "n-left", "n-right");
+    pad.classList.add("n-" + dir);
+    clearTimeout(nudgeTimer);
+    nudgeTimer = setTimeout(() => pad.classList.remove("n-" + dir), 200);
+  }
+  function ripple(x, y) {
+    const r = pad.getBoundingClientRect(), d = document.createElement("div");
+    d.className = "ripple";
+    d.style.left = (x - r.left) + "px"; d.style.top = (y - r.top) + "px";
+    pad.appendChild(d);
+    setTimeout(() => d.remove(), 520);
+  }
+  pad.addEventListener("pointerdown", e => {
+    pad.setPointerCapture(e.pointerId);
+    sx = e.clientX; sy = e.clientY; t0 = performance.now(); moved = false;
+    ripple(e.clientX, e.clientY);
+  });
+  pad.addEventListener("pointermove", e => {
+    if (sx === null) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy, ax = Math.abs(dx), ay = Math.abs(dy);
+    if (Math.max(ax, ay) > 10) moved = true;
+    if (Math.max(ax, ay) >= STEP) {
+      const dir = ax > ay ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+      key(dir); nudge(dir);
+      sx = e.clientX; sy = e.clientY;
+    }
+  });
+  pad.addEventListener("pointerup", e => {
+    if (sx === null) return;
+    if (!moved && performance.now() - t0 < 450) {
+      const r = pad.getBoundingClientRect();
+      const rx = (e.clientX - r.left) / r.width - .5, ry = (e.clientY - r.top) / r.height - .5;
+      if (Math.max(Math.abs(rx), Math.abs(ry)) > .3) {
+        const dir = Math.abs(rx) > Math.abs(ry) ? (rx > 0 ? "right" : "left") : (ry > 0 ? "down" : "up");
+        key(dir); nudge(dir);
+      } else {
+        pad.classList.add("press"); setTimeout(() => pad.classList.remove("press"), 160);
+        key("ok");
+      }
+    }
+    sx = null;
+  });
+  pad.addEventListener("pointercancel", () => { sx = null; });
+})();
+
+$("#tvSettings").addEventListener("click", () => key("settings"));
+$("#npBtn").addEventListener("click", () => { key("playpause"); setTimeout(refresh, 600); });
+
+// ---- typing: what's in the box mirrors into the TV's focused text box ----
+let typeTimer;
+async function sendText(enter) {
+  try {
+    const r = await api("/api/type?enter=" + (enter ? 1 : 0), $("#typeBox").value);
+    $("#typeStatus").textContent = r.result === "ok" ? (enter ? "Sent." : "Typing on the TV…")
+      : r.result === "off" ? "Turn on Phone remote in MonolithicOS Settings to type."
+      : "No text box is selected on the TV. Apps with their own on-screen keyboard (Netflix, YouTube) can't be typed into.";
+  } catch (e) { if (e.message !== "pin") $("#typeStatus").textContent = "Couldn't reach the TV."; }
+}
+$("#typeBox").addEventListener("input", () => { clearTimeout(typeTimer); typeTimer = setTimeout(() => sendText(false), 280); });
+$("#typeForm").addEventListener("submit", e => { e.preventDefault(); clearTimeout(typeTimer); buzz(); sendText(true); });
+
+// ---- tabs ----
+document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click", () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".tab").forEach(s => s.hidden = s.id !== "tab-" + tab);
+  buzz(5);
+  window.scrollTo({ top: 0 });
+}));
+
+// ---- settings rows ----
+const HOME_ROWS = [
+  { k: "name", label: "Your name", text: "For the greeting" },
+  { k: "city", label: "Weather city", text: "City" },
+  { k: "photo", label: "Background", seg: [["1", "Wallpaper"], ["0", "Aurora"]] },
+  { k: "dim", label: "Dim wallpaper", range: [0, 100, 10] },
+  { k: "snow", label: "Falling snow", note: "On this wallpaper" },
+  { k: "night", label: "Night mode", note: "Darker and warmer, 10 pm to 6 am" },
+  { k: "clock24", label: "24-hour clock" },
+  { k: "cards_on", label: "Show cards" },
+];
+const TV_ROWS = [
+  { k: "adblock", label: "Ad blocking", note: "AdGuard DNS for the whole TV" },
+  { k: "fast", label: "Fast animations", note: "Half-length transitions everywhere" },
+  { k: "ambient", label: "MonolithicOS screensaver", note: "Off uses Google TV's own" },
+  { k: "buttons", label: "App buttons everywhere", note: "YouTube, Netflix and Prime buttons work in any app. Holding volume then steps one at a time." },
+];
+function buildRows(el, rows, sys) {
+  el.innerHTML = "";
+  rows.forEach(r => {
+    const row = document.createElement("div");
+    row.className = "set"; row.dataset.k = r.k;
+    row.innerHTML = '<div class="words"><b></b>' + (r.note ? "<small></small>" : "") + "</div>";
+    row.querySelector("b").textContent = r.label;
+    if (r.note) row.querySelector("small").textContent = r.note;
+    if (r.text) {
+      const f = document.createElement("input");
+      f.className = "field"; f.placeholder = r.text; f.autocomplete = "off"; f.spellcheck = false;
+      f.enterKeyHint = "done";
+      const save = async () => {
+        const v = f.value.trim();
+        if (v === (state && state.settings[r.k] || "")) return;
+        try {
+          render(r.k === "city" ? await api("/api/city", v) : await api("/api/set?k=name&v=" + encodeURIComponent(v), ""));
+          buzz(6);
+        } catch (e) { if (e.message !== "pin") { toast(r.k === "city" ? "Couldn't find that city" : "Couldn't save that"); refresh(); } }
+      };
+      f.addEventListener("change", save);
+      f.addEventListener("keydown", e => { if (e.key === "Enter") f.blur(); });
+      row.appendChild(f);
+    } else if (r.range) {
+      row.classList.add("slider");
+      const val = document.createElement("span");
+      val.className = "val";
+      const rg = document.createElement("input");
+      rg.type = "range"; rg.className = "range";
+      [rg.min, rg.max, rg.step] = r.range;
+      rg._paint = () => {
+        rg.style.setProperty("--p", (rg.value - r.range[0]) / (r.range[1] - r.range[0]) * 100 + "%");
+        val.textContent = +rg.value === 0 ? "Off" : rg.value + "%";
+      };
+      // the TV follows as you drag, one step at a time; replies don't move the thumb under your finger
+      rg.addEventListener("pointerdown", () => { rg.dataset.busy = "1"; });
+      rg.addEventListener("input", () => { rg._paint(); set(r.k, rg.value); });
+      rg.addEventListener("change", () => { delete rg.dataset.busy; });
+      row.appendChild(val);
+      row.appendChild(rg);
+    } else if (r.seg) {
+      const seg = document.createElement("div");
+      seg.className = "seg";
+      r.seg.forEach(([v, name]) => {
+        const b = document.createElement("button");
+        b.textContent = name; b.dataset.v = v;
+        b.addEventListener("click", () => set(r.k, v));
+        seg.appendChild(b);
+      });
+      row.appendChild(seg);
+    } else {
+      const sw = document.createElement("button");
+      sw.className = "sw"; sw.setAttribute("aria-label", r.label);
+      sw.addEventListener("click", () => {
+        if (sys && state && !state.allowed) { toast("Run the MonolithicOS installer once to allow this"); return; }
+        set(r.k, sw.classList.contains("on") ? "0" : "1");
+      });
+      row.appendChild(sw);
+    }
+    el.appendChild(row);
+  });
+}
+buildRows($("#homeRows"), HOME_ROWS, false);
+buildRows($("#tvRows"), TV_ROWS, true);
+
+async function set(k, v) {
+  buzz(6);
+  const row = document.querySelector('.set[data-k="' + k + '"]');
+  const sw = row && row.querySelector(".sw");
+  if (sw) sw.classList.toggle("on", v === "1");   // flip now, confirm from the reply
+  row && row.querySelectorAll(".seg button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  try { render(await api("/api/set?k=" + k + "&v=" + v, "")); }
+  catch (e) { if (e.message !== "pin") { toast(e.message === "installer" ? "Run the MonolithicOS installer once to allow this" : "Couldn't change that"); refresh(); } }
+}
+
+// ---- wallpaper upload: shrunk on the phone first, so a 50 MP photo goes over as ~1 MB ----
+$("#file").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  toast("Sending to the TV…", 20000);
+  try {
+    const bmp = await createImageBitmap(f);
+    const s = Math.min(1, 2880 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.9));
+    render(await api("/api/wallpaper", blob, { "Content-Type": "image/jpeg" }));
+    toast(bmp.height > bmp.width ? "On the TV now (portrait photos are cropped to fit)" : "On the TV now");
+    buzz([10, 50, 10]);
+  } catch (err) { if (err.message !== "pin") toast("Couldn't send that photo"); }
+});
+
+// ---- rendering ----
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function render(s) {
+  if (!s) return;
+  state = s;
+  $("#app").hidden = false; $("#tabs").hidden = false; $("#login").hidden = true;
+  $("#helperNote").hidden = s.helper;
+  $("#watchNote").hidden = !s.watch;
+  $("#watchNote").textContent = s.watch || "";
+
+  const np = s.now;
+  $("#np").hidden = !np;
+  if (np) {
+    $("#npTitle").textContent = np.title || np.app;
+    $("#npSub").textContent = [np.artist, np.app].filter(Boolean).join(" · ");
+    $("#npBtn").innerHTML = np.playing
+      ? '<svg viewBox="0 0 24 24"><path d="M8 5.5v13M16 5.5v13"/></svg>'
+      : '<svg viewBox="0 0 24 24"><path d="M7.5 5.5v13l10.5-6.5z"/></svg>';
+  }
+
+  const aSig = JSON.stringify(s.apps);
+  if (aSig !== appsSig) {
+    appsSig = aSig;
+    const g = $("#apps");
+    g.innerHTML = "";
+    s.apps.forEach(a => {
+      const b = document.createElement("button");
+      b.className = "app";
+      b.innerHTML = '<div class="art"><img loading="lazy" alt=""></div><span></span>';
+      const img = b.querySelector("img");
+      img.onload = () => { if (img.naturalWidth === img.naturalHeight) b.querySelector(".art").classList.add("icon"); };
+      img.src = "/api/icon?pkg=" + encodeURIComponent(a.pkg);
+      b.querySelector("span").textContent = a.label;
+      b.addEventListener("click", async () => {
+        buzz(10);
+        try { await api("/api/launch?pkg=" + encodeURIComponent(a.pkg), ""); toast("Opening " + a.label); }
+        catch (e) { if (e.message !== "pin") toast("Couldn't open " + a.label); }
+      });
+      g.appendChild(b);
+    });
+  }
+
+  const iSig = JSON.stringify(s.inputs);
+  if (iSig !== inputsSig) {
+    inputsSig = iSig;
+    const l = $("#inputs");
+    l.innerHTML = "";
+    $("#inputsHead").hidden = !s.inputs.length;
+    s.inputs.forEach(i => {
+      const name = i.name || i.device || i.port;
+      const row = document.createElement("div");
+      row.className = "input glass";
+      row.innerHTML = '<span class="dot' + (i.state === "Connected" ? " on" : "") + '"></span>'
+        + '<div class="words"><b>' + esc(name) + "</b><span>" + esc([name !== i.port ? i.port : "", i.state].filter(Boolean).join(" · ")) + "</span></div>"
+        + '<button class="ren">Rename</button>';
+      row.addEventListener("click", async e => {
+        if (e.target.classList.contains("ren")) return;
+        buzz(10);
+        try { await api("/api/input?id=" + encodeURIComponent(i.id), ""); toast("Switching to " + name); }
+        catch (err) { if (err.message !== "pin") toast("Couldn't switch input"); }
+      });
+      row.querySelector(".ren").addEventListener("click", async () => {
+        const n = prompt("Name for " + i.port + " (empty for the default)", i.name || i.device || "");
+        if (n === null) return;
+        try { render(await api("/api/rename?id=" + encodeURIComponent(i.id) + "&name=" + encodeURIComponent(n), "")); }
+        catch (err) { if (err.message !== "pin") toast("Couldn't rename"); }
+      });
+      l.appendChild(row);
+    });
+  }
+
+  const wSig = JSON.stringify([s.wallpapers, s.wallpaper, s.settings.photo]);
+  if (wSig !== wallsSig) {
+    wallsSig = wSig;
+    const w = $("#walls");
+    w.innerHTML = "";
+    const add = document.createElement("button");
+    add.className = "wall add";
+    add.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add photo';
+    add.addEventListener("click", () => $("#file").click());
+    w.appendChild(add);
+    s.wallpapers.forEach(p => {
+      const b = document.createElement("button");
+      b.className = "wall" + (s.settings.photo && p.path === s.wallpaper ? " on" : "");
+      b.innerHTML = '<img loading="lazy" alt="">' + (p.mine ? '<span class="x" aria-label="Delete">×</span>' : "");
+      b.querySelector("img").src = "/api/thumb?path=" + encodeURIComponent(p.path);
+      b.addEventListener("click", async e => {
+        buzz(8);
+        if (e.target.classList.contains("x")) {
+          if (!confirm("Delete this photo from the TV?")) return;
+          try { render(await api("/api/wallpaper/delete?path=" + encodeURIComponent(p.path), "")); } catch (err) {}
+          return;
+        }
+        try { render(await api("/api/wallpaper/pick?path=" + encodeURIComponent(p.path), "")); } catch (err) {}
+      });
+      w.appendChild(b);
+    });
+  }
+
+  const st = s.settings;
+  const vals = { photo: st.photo ? "1" : "0", dim: String(st.dim) };
+  document.querySelectorAll(".set").forEach(row => {
+    const k = row.dataset.k, sw = row.querySelector(".sw");
+    if (sw) sw.classList.toggle("on", !!st[k]);
+    const fld = row.querySelector(".field");
+    if (fld && document.activeElement !== fld) fld.value = st[k] || "";
+    const rg = row.querySelector(".range");
+    if (rg && !rg.dataset.busy && st[k] !== undefined) { rg.value = st[k]; rg._paint(); }
+    row.querySelectorAll(".seg button").forEach(b => b.classList.toggle("on", b.dataset.v === vals[k]));
+  });
+  document.querySelectorAll("#tvRows .set").forEach(r => r.classList.toggle("off", !s.allowed));
+  renderCards(s.cards || []);
+  document.querySelectorAll('.set[data-k="dim"], .set[data-k="snow"]').forEach(r => r.classList.toggle("off", !st.photo));
+  $("#tvNote").textContent = s.allowed ? "" : "These need a one-time permission: run the MonolithicOS installer from a computer.";
+}
+
+async function refresh() {
+  try { render(await api("/api/state")); } catch (e) { if (e.message !== "pin") toast("Can't reach the TV. Same Wi-Fi?"); }
+}
+setInterval(() => { if (document.visibilityState === "visible" && state && $("#login").hidden) refresh(); }, 5000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && state) refresh(); });
+refresh();
+
+// Lets Chrome install this as an app where it treats the address as secure; elsewhere it's a no-op.
+if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("/sw.js").catch(() => {});
+
+// Android browsers get a nudge towards the phone app (not inside the app, and not once dismissed).
+(() => {
+  let no = false;
+  try { no = localStorage.getItem("noapp") === "1"; } catch (e) {}
+  if (!/Android/.test(navigator.userAgent) || /MonolithRemote/.test(navigator.userAgent) || no) return;
+  $("#getApp").hidden = false;
+  $("#getAppX").addEventListener("click", () => {
+    $("#getApp").hidden = true;
+    try { localStorage.setItem("noapp", "1"); } catch (e) {}
+  });
+})();
+
+// ---- cards: F1 and up to three teams, searched on the TV (ESPN's team lists) ----
+const X_SVG = '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>';
+function cardRow(c, extra) {
+  const row = document.createElement("div");
+  row.className = "cardrow";
+  const badge = document.createElement("div");
+  badge.className = "badge";
+  if (c.t === "f1") { badge.textContent = "F1"; badge.style.background = "linear-gradient(135deg,#ff2a1a,#b80000)"; }
+  else if (c.logo) { const img = document.createElement("img"); img.src = c.logo; img.alt = ""; badge.appendChild(img); }
+  else badge.textContent = c.a || "";
+  const words = document.createElement("div");
+  words.className = "words";
+  words.innerHTML = "<b></b><small></small>";
+  words.querySelector("b").textContent = c.t === "f1" ? "Formula 1" : (extra ? c.full || c.n : c.n);
+  words.querySelector("small").textContent = c.t === "f1" ? "Next race weekend, sessions, podium" : c.ln || "";
+  row.append(badge, words);
+  return row;
+}
+async function saveCards(list) {
+  try { render(await api("/api/cards", JSON.stringify(list), { "Content-Type": "application/json" })); buzz(8); }
+  catch (e) { if (e.message !== "pin") { toast("Couldn't change the cards"); refresh(); } }
+}
+function renderCards(list) {
+  const el = $("#cardList");
+  el.innerHTML = "";
+  if (!list.length) {
+    const e = document.createElement("div");
+    e.className = "cards-empty";
+    e.textContent = "No cards yet. Add F1 or your teams.";
+    el.appendChild(e);
+  }
+  list.forEach((c, i) => {
+    const row = cardRow(c);
+    const x = document.createElement("button");
+    x.className = "x"; x.setAttribute("aria-label", "Remove"); x.innerHTML = X_SVG;
+    x.addEventListener("click", () => saveCards(list.filter((_, j) => j !== i)));
+    row.appendChild(x);
+    el.appendChild(row);
+  });
+  const teams = list.filter(c => c.t === "team").length;
+  $("#addF1").disabled = list.some(c => c.t === "f1");
+  $("#addTeam").disabled = teams >= 3;
+}
+$("#addF1").addEventListener("click", () => saveCards([...(state.cards || []), { t: "f1" }]));
+$("#addTeam").addEventListener("click", () => {
+  $("#teamSheet").hidden = false; $("#teamQ").value = ""; $("#teamResults").innerHTML = "";
+  setTimeout(() => $("#teamQ").focus(), 60);
+});
+$("#teamClose").addEventListener("click", () => { $("#teamSheet").hidden = true; });
+$("#teamSheet").addEventListener("click", e => { if (e.target.id === "teamSheet") $("#teamSheet").hidden = true; });
+let teamTimer = 0, teamAsk = 0;
+$("#teamQ").addEventListener("input", () => {
+  clearTimeout(teamTimer);
+  const q = $("#teamQ").value.trim();
+  if (q.length < 2) { $("#teamResults").innerHTML = ""; return; }
+  teamTimer = setTimeout(async () => {
+    const ask = ++teamAsk;
+    $("#teamResults").innerHTML = '<div class="cards-empty">Searching (the first search takes a few seconds)\u2026</div>';
+    let found = [];
+    try { found = await api("/api/teams?q=" + encodeURIComponent(q)); } catch (e) { if (e.message === "pin") return; }
+    if (ask !== teamAsk) return;
+    const el = $("#teamResults");
+    el.innerHTML = "";
+    if (!found.length) { el.innerHTML = '<div class="cards-empty">No teams found</div>'; return; }
+    found.forEach(t => {
+      const row = cardRow(t, true);
+      row.addEventListener("click", () => {
+        $("#teamSheet").hidden = true;
+        const list = (state.cards || []).filter(c => !(c.t === "team" && c.s === t.s && c.id === t.id));
+        const { full, ...spec } = t;
+        saveCards([...list, spec]);
+      });
+      el.appendChild(row);
+    });
+  }, 300);
+});
+</script>
+</body>
+</html>

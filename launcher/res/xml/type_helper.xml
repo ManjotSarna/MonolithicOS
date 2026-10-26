@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- No key filter (that's what stops held volume ramping on this TV), and only the rarest event
+     type, so apps send it next to nothing. Window content is for finding the focused text box. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeAnnouncement"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canRetrieveWindowContent="true"
+    android:notificationTimeout="0"
+    android:description="@string/type_helper" />

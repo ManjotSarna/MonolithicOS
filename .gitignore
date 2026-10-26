@@ -1,0 +1,13 @@
+# build output
+launcher/build/
+remote/build/
+dist/
+# the phone app the launcher carries is built, not committed
+launcher/res/raw/remote_app.apk
+# keys never go in
+*.jks
+# what the installer downloads and remembers
+installer/files/*.apk
+installer/files/platform-tools/
+installer/files/.last-tv
+.DS_Store
