@@ -1091,32 +1091,54 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     }
 
     private void reveal() {
+        // the reveal's first pose before Home is shown at all, so nothing jumps when it starts moving
+        View band = rows.isEmpty() ? null : rows.get(0);
+        backdrop.setScaleX(1.06f);
+        backdrop.setScaleY(1.06f);
+        if (band != null) band.setTranslationY(dp(70));
+        for (Card k : cards) k.box.setTranslationX(dp(40));
         root.setVisibility(View.VISIBLE);
         goTop();   // hidden, Home had lost focus: it would land on the first thing up top, the Inputs pill
-        root.post(this::lift);   // the first frame of Home (the heaviest) still under the black
+        // Under the black, Home's first frames are slow (back from HDMI the TV has dropped its graphics and
+        // uploads them again): lift only once it draws on time, or the fade is over before it's seen.
+        long until = SystemClock.uptimeMillis() + 1200;
+        android.view.Choreographer.getInstance().postFrameCallback(new android.view.Choreographer.FrameCallback() {
+            long last;
+            int smooth;
+            @Override public void doFrame(long nanos) {
+                smooth = last != 0 && nanos - last < 20_000_000L ? smooth + 1 : 0;
+                last = nanos;
+                root.invalidate();   // keep Home drawing under the black, so its first frames are spent here
+                if (smooth >= 6 || SystemClock.uptimeMillis() > until) lift(band);
+                else android.view.Choreographer.getInstance().postFrameCallback(this);
+            }
+        });
     }
 
-    private void lift() {
+    /** The black fading off, the wallpaper settling, the dock rising, the cards gliding in: stepped by frames. */
+    private void lift(View band) {
         FrameLayout c = curtain;
-        c.animate().alpha(0f).setDuration(1100).setInterpolator(glide).withEndAction(() -> {
-            ((ViewGroup) c.getParent()).removeView(c);
-            curtain = null;
-        }).start();
-        View band = rows.isEmpty() ? null : rows.get(0);
         Interpolator settle = new DecelerateInterpolator(1.6f);
-        // one animator for it all: these properties belong to nobody else, so nothing fights over them
-        ValueAnimator a = ValueAnimator.ofFloat(0f, 1800f);
-        a.setDuration(1800);
-        a.setInterpolator(null);
-        a.addUpdateListener(v -> {
-            float ms = (float) v.getAnimatedValue();
-            float s = 1f + 0.06f * (1f - settle.getInterpolation(part(ms, 0, 1700)));
-            backdrop.setScaleX(s);
-            backdrop.setScaleY(s);
-            if (band != null) band.setTranslationY(dp(70) * (1f - glide.getInterpolation(part(ms, 150, 1100))));
-            for (Card k : cards) k.box.setTranslationX(dp(40) * (1f - glide.getInterpolation(part(ms, 300, 1000))));
+        android.view.Choreographer.getInstance().postFrameCallback(new android.view.Choreographer.FrameCallback() {
+            long last;
+            float ms;
+            @Override public void doFrame(long nanos) {
+                ms += last == 0 ? 0f : Math.min(1000f / 60f, (nanos - last) / 1e6f);   // a stall holds, never jumps
+                last = nanos;
+                c.setAlpha(1f - glide.getInterpolation(part(ms, 0, 1100)));
+                float s = 1f + 0.06f * (1f - settle.getInterpolation(part(ms, 0, 1700)));
+                backdrop.setScaleX(s);
+                backdrop.setScaleY(s);
+                if (band != null) band.setTranslationY(dp(70) * (1f - glide.getInterpolation(part(ms, 150, 1100))));
+                for (Card k : cards) k.box.setTranslationX(dp(40) * (1f - glide.getInterpolation(part(ms, 300, 1000))));
+                if (ms < 1800f) {
+                    android.view.Choreographer.getInstance().postFrameCallback(this);
+                } else {
+                    if (c.getParent() != null) ((ViewGroup) c.getParent()).removeView(c);
+                    if (curtain == c) curtain = null;
+                }
+            }
         });
-        a.start();
     }
 
     private static float part(float ms, float start, float length) {
