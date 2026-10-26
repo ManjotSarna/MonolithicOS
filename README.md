@@ -55,8 +55,10 @@ launcher isn't running your TV in the background anymore.
   Football (Premier League, LaLiga, Serie A, Bundesliga, Ligue 1, MLS...), NFL, NBA, NHL, MLB.
 - **Weather on your wallpaper.** Snowing outside, it snows on the home screen. Raining, it rains. The Horizon
   wallpaper goes dawn, day, dusk, night with the actual time.
-- **Phone remote.** Touchpad, type into the TV's search boxes, open apps, switch inputs, change settings.
-  Android app included.
+- **Your apps, your way.** Hide any app, rename it, give it your own picture, or lock it behind a parental PIN.
+  Make your own rows (Streaming, Sports, Kids) and folders, and a Recent row keeps your last few apps close.
+- **Phone remote.** Touchpad, type into the TV's search boxes, open apps, switch inputs, change settings,
+  sort out your apps, and back up every setting to one file for a new TV. Android app included.
 - **Settings on the TV.** Ad blocking for the whole TV, dim the wallpaper or the app icons, night mode,
   animation speed, 30 fps mode if your TV's on the slow side, all of it. The screensaver is MonolithicOS's own:
   a big thin clock over your wallpaper.

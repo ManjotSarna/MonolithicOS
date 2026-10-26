@@ -176,8 +176,16 @@ final class Tile extends FrameLayout {
         return pkg != null ? dim : 0f;
     }
 
+    /** The glow's colour: the app's own, dimmed with Dim App Icons like the app itself. */
+    private void glow() {
+        int c = pkg != null && dim > 0 ? (Math.round(255 * (1f - dim)) << 24) | (accent & 0xFFFFFF) : accent;
+        setOutlineSpotShadowColor(c);
+        setOutlineAmbientShadowColor(c);
+    }
+
     /** Fade the darkening to where it belongs now ({@link #dim} on app cards, after a settings change). */
     void settleShade() {
+        if (hasFocus()) glow();
         float to = rest(), from = shade >= 0 ? shade : to;
         if (shadeAnim != null) shadeAnim.cancel();
         if (Math.abs(from - to) < 0.004f) {
@@ -239,8 +247,7 @@ final class Tile extends FrameLayout {
         animate().cancel();
         if (gained) {
             // the lifted card casts its own colour, a soft glow instead of a grey shadow
-            setOutlineSpotShadowColor(accent);
-            setOutlineAmbientShadowColor(accent);
+            glow();
             setRotationY(direction == FOCUS_RIGHT ? TILT : direction == FOCUS_LEFT ? -TILT : 0f);
             setRotationX(direction == FOCUS_DOWN ? -TILT * 0.7f : direction == FOCUS_UP ? TILT * 0.7f : 0f);
             animate().scaleX(scale).scaleY(scale).rotationX(0f).rotationY(0f).translationZ(lift())

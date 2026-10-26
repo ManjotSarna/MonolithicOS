@@ -193,6 +193,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         contentTop = dp(380);   // the dock sits low: the wallpaper gets the screen
 
         prefs = getSharedPreferences("home", MODE_PRIVATE);
+        forgetOld();
         readStyles();
         applyFps();
         prefs.registerOnSharedPreferenceChangeListener(prefsChanged);
@@ -305,6 +306,16 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         if (Tweaks.allowed(this) && !Tweaks.ambient(this)) {
             try { Tweaks.setAmbient(this, true); } catch (RuntimeException ignored) { }
         }
+    }
+
+    /** Settings from features that are gone (score alerts, the Cinematic look, its experiments). */
+    private void forgetOld() {
+        SharedPreferences.Editor e = prefs.edit();
+        boolean any = false;
+        for (String k : prefs.getAll().keySet()) {
+            if (k.startsWith("x_") || k.equals("look") || k.equals("alerts") || k.equals("sounds")) { e.remove(k); any = true; }
+        }
+        if (any) e.apply();
     }
 
     @Override
@@ -430,7 +441,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
                 : k == KEY_PRIME ? "com.amazon.amazonvideo.livingroom"
                 : k == KEY_YOUTUBE ? "com.google.android.youtube.tv" : null;
         if (app != null) {
-            if (up) launchPackage(app);
+            if (up) unlocked(app, () -> launchPackage(app));
             return true;
         }
         return super.dispatchKeyEvent(e);
@@ -484,29 +495,48 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
 
         refreshInputs();
 
-        // Everything else, sorted by name, in rows of six.
+        // Below the dock: Recent, your own rows, then everything else by name with your folders among them and
+        // MonolithicOS Settings last, like the Settings app on Apple TV. Hidden apps nowhere; an app in a row or
+        // folder shows there instead of in Apps.
+        Set<String> hidden = Apps.set(prefs, "hidden");
+        List<Apps.Group> groups = Apps.groups(prefs);
+        Set<String> grouped = new HashSet<>();
+        for (Apps.Group g : groups) grouped.addAll(g.pkgs);
+        sections = 0;
+        lastLine = null;
+        List<Tile> recent = new ArrayList<>();
+        for (String pkg : Apps.recent(prefs)) {
+            ResolveInfo ri = apps.get(pkg);
+            if (recent.size() >= COLS || ri == null || docked.contains(pkg) || hidden.contains(pkg) || HIDDEN.contains(pkg)) continue;
+            recent.add(appTile(pm, ri, 1.10f));
+        }
+        if (!recent.isEmpty()) addSection("Recent", recent);
+        for (Apps.Group g : groups) {
+            if (g.folder()) continue;
+            List<Tile> tiles = new ArrayList<>();
+            for (String pkg : g.pkgs) {
+                ResolveInfo ri = apps.get(pkg);
+                if (ri != null && !hidden.contains(pkg)) tiles.add(appTile(pm, ri, 1.10f));
+            }
+            if (!tiles.isEmpty()) addSection(g.name, tiles);
+        }
         List<ResolveInfo> rest = new ArrayList<>();
         for (ResolveInfo ri : apps.values()) {
             String pkg = ri.activityInfo.packageName;
-            if (!docked.contains(pkg) && !HIDDEN.contains(pkg)) rest.add(ri);
+            if (!docked.contains(pkg) && !HIDDEN.contains(pkg) && !hidden.contains(pkg) && !grouped.contains(pkg)) rest.add(ri);
         }
-        rest.sort((a, b) -> a.loadLabel(pm).toString().compareToIgnoreCase(b.loadLabel(pm).toString()));
+        rest.sort((a, b) -> name(pm, a).compareToIgnoreCase(name(pm, b)));
         List<Tile> all = new ArrayList<>();
         for (ResolveInfo ri : rest) all.add(appTile(pm, ri, 1.10f));
-        all.add(settingsTile());   // MonolithicOS Settings, last, like the Settings app on Apple TV
-        column.addView(appsHead());
-        for (int i = 0; i < all.size(); i += COLS) {
-            LinearLayout line = row(bandPad);
-            List<Tile> tiles = all.subList(i, Math.min(all.size(), i + COLS));
-            for (Tile t : tiles) {
-                line.addView(labelled(t), cell(line.getChildCount()));
-                rowOf.put(t, rows.size());
-            }
-            line.setAlpha(0f);   // below the fold until you head down (scrollTo)
-            column.addView(line);
-            rows.add(line);
-            edges(tiles, false, i + COLS >= all.size());
+        for (Apps.Group g : groups) {
+            if (!g.folder()) continue;
+            List<ResolveInfo> in = new ArrayList<>();
+            for (String pkg : g.pkgs) if (apps.get(pkg) != null && !hidden.contains(pkg)) in.add(apps.get(pkg));
+            if (!in.isEmpty()) all.add(folderTile(pm, g, in));
         }
+        all.add(settingsTile());
+        addSection("Apps", all);
+        if (lastLine != null) edges(lastLine, false, true);
         // The dock, the only row on screen at rest, is kept as a GPU texture: a frame that changes
         // something else (a card, the snow) draws it as one image instead of every tile and pane again
         // (measured on this TV: a fifth less GPU per frame). Only the dock: a layer clips to its view,
@@ -521,11 +551,39 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         }
     }
 
+    private int sections;
+    private List<Tile> lastLine;
+
+    /** A heading (the first one peeks under the dock, with its v) and its apps in rows of six. */
+    private void addSection(String head, List<Tile> all) {
+        column.addView(sections++ == 0 ? appsHead(head) : section(head));
+        for (int i = 0; i < all.size(); i += COLS) {
+            LinearLayout line = row(bandPad);
+            List<Tile> tiles = all.subList(i, Math.min(all.size(), i + COLS));
+            for (Tile t : tiles) {
+                line.addView(labelled(t), cell(line.getChildCount()));
+                rowOf.put(t, rows.size());
+            }
+            line.setAlpha(0f);   // below the fold until you head down (scrollTo)
+            column.addView(line);
+            rows.add(line);
+            edges(tiles, false, false);
+            lastLine = tiles;
+        }
+    }
+
+    /** The app's name: yours if you gave it one on the phone page. */
+    private String name(PackageManager pm, ResolveInfo ri) {
+        String mine = Apps.label(prefs, ri.activityInfo.packageName);
+        return mine != null ? mine : ri.loadLabel(pm).toString();
+    }
+
     private Tile appTile(PackageManager pm, ResolveInfo ri, float scale) {
         ActivityInfo ai = ri.activityInfo;
         String pkg = ai.packageName;
-        String name = ri.loadLabel(pm).toString();
-        Drawable banner = banner(pm, ri);
+        String name = name(pm, ri);
+        Bitmap mine = Apps.picture(this, pkg);   // your picture from the phone page, over the app's banner
+        Drawable banner = mine != null ? new BitmapDrawable(getResources(), mine) : banner(pm, ri);
         Drawable art = banner != null ? banner : ri.loadIcon(pm);
         int[] colors = palette(pkg, art);
         Tile t = new Tile(this, tileW, tileH, radius, scale, name, null, colors[0], colors[1]);
@@ -557,9 +615,159 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
                     ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
         }
         t.listener = this;
-        t.setOnClickListener(v -> zoomLaunch(t, () -> launch(ai)));
+        t.setOnClickListener(v -> unlocked(pkg, () -> zoomLaunch(t, () -> launch(ai))));
         t.setOnLongClickListener(v -> { showMenu(t); return true; });
         return t;
+    }
+
+    /** A folder: the first four apps in it, small, on glass; OK opens it as a list. */
+    private Tile folderTile(PackageManager pm, Apps.Group g, List<ResolveInfo> in) {
+        Tile t = new Tile(this, tileW, tileH, radius, 1.10f, g.name, null, NEUTRAL, NEUTRAL2);
+        glass(t, radius, 0x40101014, 0xFF2E2E31);
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.VERTICAL);
+        grid.setGravity(Gravity.CENTER);
+        int cw = Math.round(tileW * 0.34f), ch = Math.round(cw * 9f / 16f);
+        for (int r = 0; r < 2; r++) {
+            LinearLayout line = new LinearLayout(this);
+            for (int c = 0; c < 2; c++) {
+                int i = r * 2 + c;
+                ImageView iv = new ImageView(this);
+                iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                if (i < in.size()) {
+                    Bitmap mine = Apps.picture(this, in.get(i).activityInfo.packageName);
+                    Drawable art = mine != null ? new BitmapDrawable(getResources(), mine) : banner(pm, in.get(i));
+                    iv.setImageDrawable(art != null ? art : in.get(i).loadIcon(pm));
+                    iv.setOutlineProvider(new ViewOutlineProvider() {
+                        @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), dp(4)); }
+                    });
+                    iv.setClipToOutline(true);
+                }
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(cw, ch);
+                lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+                line.addView(iv, lp);
+            }
+            grid.addView(line);
+        }
+        t.addView(grid, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER));
+        t.listener = this;
+        t.setOnClickListener(v -> showFolder(pm, g, in));
+        t.setOnLongClickListener(v -> { showFolder(pm, g, in); return true; });
+        return t;
+    }
+
+    private void showFolder(PackageManager pm, Apps.Group g, List<ResolveInfo> in) {
+        if (menu != null) return;
+        LinearLayout panel = openPanel(g.name, in.size() == 1 ? "1 app" : in.size() + " apps", dp(380));
+        List<View> items = new ArrayList<>();
+        for (ResolveInfo ri : in) {
+            TextView item = menuItem(name(pm, ri));
+            String pkg = ri.activityInfo.packageName;
+            item.setOnClickListener(v -> { closeMenu(false); unlocked(pkg, () -> launch(ri.activityInfo)); });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = items.isEmpty() ? 0 : dp(6);
+            panel.addView(item, lp);
+            items.add(item);
+        }
+        fence(items);
+        items.get(0).requestFocus();
+    }
+
+    // ---- parental lock ----------------------------------------------------------------------
+
+    /** Runs go, after the parental PIN if the app is locked. */
+    private void unlocked(String pkg, Runnable go) {
+        String pin = Apps.lockPin(prefs);
+        if (pin == null || !Apps.locked(prefs, pkg)) go.run();
+        else askPin("Enter PIN", appLabel(pkg) + " is locked", pin::equals, go);
+    }
+
+    /** A four-digit pad on a panel: the PIN is checked by ok; then done runs. */
+    private void askPin(String head, String hint, java.util.function.Predicate<String> ok, Runnable done) {
+        if (menu != null) closeMenu(false);
+        LinearLayout panel = openPanel(head, hint, dp(360));
+        TextView dots = text(30, light, Color.WHITE);
+        dots.setGravity(Gravity.CENTER_HORIZONTAL);
+        dots.setLetterSpacing(0.35f);
+        StringBuilder typed = new StringBuilder();
+        Runnable show = () -> {
+            StringBuilder d = new StringBuilder();
+            for (int i = 0; i < 4; i++) d.append(i < typed.length() ? '\u25CF' : '\u25CB');
+            dots.setText(d);
+        };
+        show.run();
+        LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        dl.bottomMargin = dp(22);
+        panel.addView(dots, dl);
+        String[] keys = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "\u232B"};
+        TextView[] pad = new TextView[12];
+        View first = null;
+        for (int r = 0; r < 4; r++) {
+            LinearLayout line = new LinearLayout(this);
+            for (int c = 0; c < 3; c++) {
+                String k = keys[r * 3 + c];
+                TextView b = menuItem(k);
+                b.setGravity(Gravity.CENTER);
+                if (k.isEmpty()) { b.setFocusable(false); b.setBackground(null); }
+                b.setOnClickListener(v -> {
+                    if (k.equals("\u232B")) { if (typed.length() > 0) typed.setLength(typed.length() - 1); }
+                    else if (typed.length() < 4) typed.append(k);
+                    show.run();
+                    if (typed.length() < 4) return;
+                    if (ok.test(typed.toString())) {
+                        closeMenu(true);
+                        done.run();
+                    } else {   // wrong: a shake, and start again
+                        dots.animate().cancel();
+                        dots.setTranslationX(dp(14));
+                        dots.animate().translationX(0f).setInterpolator(new Spring(9f, 30f)).setDuration(420).start();
+                        typed.setLength(0);
+                        show.run();
+                    }
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(56), 1f);
+                lp.setMargins(dp(4), dp(4), dp(4), dp(4));
+                line.addView(b, lp);
+                if (!k.isEmpty()) {
+                    b.setId(View.generateViewId());
+                    pad[r * 3 + c] = b;
+                }
+                if (first == null && !k.isEmpty()) first = b;
+            }
+            panel.addView(line);
+        }
+        // the arrows stay on the pad (the apps behind the panel are focusable too); the gap left of 0 is skipped
+        for (int i = 0; i < 12; i++) {
+            if (pad[i] == null) continue;
+            int r = i / 3, c = i % 3;
+            pad[i].setNextFocusUpId(near(pad, r - 1, c, i));
+            pad[i].setNextFocusDownId(near(pad, r + 1, c, i));
+            pad[i].setNextFocusLeftId(near(pad, r, c - 1, i));
+            pad[i].setNextFocusRightId(near(pad, r, c + 1, i));
+        }
+        if (first != null) first.requestFocus();
+    }
+
+    /** The pad key at r, c (or the one beside it, past the gap); off the pad, the key itself. */
+    private static int near(TextView[] pad, int r, int c, int self) {
+        if (r < 0 || r > 3 || c < 0 || c > 2) return pad[self].getId();
+        TextView t = pad[r * 3 + c];
+        if (t == null) t = pad[r * 3 + c + 1];   // the empty slot is bottom left: its neighbour, 0
+        return t != null && t != pad[self] ? t.getId() : pad[self].getId();
+    }
+
+    /** A new parental PIN: typed twice. */
+    private void newLockPin(Runnable then) {
+        String[] chosen = {null};
+        askPin("New PIN", "For locked apps", p -> { chosen[0] = p; return true; }, () -> handler.post(() ->
+                askPin("Once more", "The same four digits", p -> p.equals(chosen[0]), () -> {
+                    prefs.edit().putString("lockpin", chosen[0]).apply();
+                    toast("Parental PIN set");
+                    if (then != null) then.run();
+                })));
     }
 
     private Tile settingsTile() {
@@ -622,8 +830,8 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     }
 
     /** "Apps" with a small v after it: everything else is down there. */
-    private View appsHead() {
-        TextView s = section("Apps");
+    private View appsHead(String name) {
+        TextView s = section(name);
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
@@ -929,6 +1137,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         if (dockTiles.contains(t)) {
             labels.add("Move");                   actions.add(() -> startMove(t));
             labels.add("Remove from Dock");       actions.add(() -> undock(t.pkg));
+            lockItem(t.pkg, labels, actions);
             labels.add("App info");               actions.add(() -> appInfo(t.pkg));
         } else if (t == nowCard) {
             if (playing != null) {
@@ -937,6 +1146,11 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             }
         } else if (t.pkg != null) {
             labels.add("Add to Dock");            actions.add(() -> addToDock(t.pkg));
+            labels.add("Hide");                   actions.add(() -> {
+                Apps.put(prefs, "hidden", t.pkg, true);
+                toast(t.title + " hidden: bring it back in MonolithicOS Settings");
+            });
+            lockItem(t.pkg, labels, actions);
             labels.add("App info");               actions.add(() -> appInfo(t.pkg));
             if (TV_SETTINGS.equals(t.pkg)) {
                 // The way back to Google TV's own launcher without a computer: press Enable there.
@@ -962,6 +1176,22 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         }
         fence(items);
         items.get(0).requestFocus();
+    }
+
+    /** Lock or Unlock in the hold-OK menu; locking without a parental PIN sets one first. */
+    private void lockItem(String pkg, List<String> labels, List<Runnable> actions) {
+        String pin = Apps.lockPin(prefs);
+        if (Apps.locked(prefs, pkg)) {
+            labels.add("Unlock");
+            actions.add(() -> handler.post(() -> askPin("Enter PIN", "To unlock " + appLabel(pkg), pin::equals,
+                    () -> Apps.put(prefs, "locked", pkg, false))));
+        } else {
+            labels.add("Lock with PIN");
+            actions.add(() -> handler.post(() -> {
+                if (pin == null) newLockPin(() -> Apps.put(prefs, "locked", pkg, true));
+                else Apps.put(prefs, "locked", pkg, true);
+            }));
+        }
     }
 
     /**
@@ -1107,6 +1337,28 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         return out;
     }
 
+    /** The hidden apps: OK brings one back. */
+    private void showHidden() {
+        if (menu != null) return;
+        PackageManager pm = getPackageManager();
+        LinearLayout panel = openPanel("Hidden Apps", "OK shows it again", dp(380));
+        List<View> items = new ArrayList<>();
+        for (String pkg : Apps.set(prefs, "hidden")) {
+            String label = Apps.label(prefs, pkg) != null ? Apps.label(prefs, pkg) : appLabel(pkg);
+            if (label.isEmpty()) continue;
+            TextView item = menuItem(label);
+            item.setOnClickListener(v -> { closeMenu(false); Apps.put(prefs, "hidden", pkg, false); });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = items.isEmpty() ? 0 : dp(6);
+            panel.addView(item, lp);
+            items.add(item);
+        }
+        if (items.isEmpty()) { closeMenu(false); return; }
+        fence(items);
+        items.get(0).requestFocus();
+    }
+
     private void setRemote(boolean on) {
         prefs.edit().putBoolean("remote", on).apply();
         if (on) Remote.start(this); else Remote.stop();
@@ -1136,6 +1388,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         List<View> items = new ArrayList<>();
         List<Runnable> refresh = new ArrayList<>();
         for (Choice c : choices()) items.add(choiceRow(c, refresh));
+        int firstAction = items.size() + (watch != null && watch.bad() ? 1 : 0);   // a gap before the buttons
         if (watch != null && watch.bad()) {   // first thing in the list while the warning is up
             TextView ignore = menuItem("Ignore the Update Warning");
             ignore.setOnClickListener(v -> {
@@ -1147,6 +1400,22 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             });
             items.add(0, ignore);
         }
+        Set<String> hiddenApps = Apps.set(prefs, "hidden");
+        if (!hiddenApps.isEmpty()) {
+            TextView shown = menuItem("Hidden Apps (" + hiddenApps.size() + ")");
+            shown.setOnClickListener(v -> { closeMenu(false); handler.post(this::showHidden); });
+            items.add(shown);
+        }
+        String pinNow = Apps.lockPin(prefs);
+        TextView lock = menuItem(pinNow == null ? "Set a Parental PIN" : "Change Parental PIN");
+        lock.setOnClickListener(v -> {
+            closeMenu(false);
+            handler.post(() -> {
+                if (pinNow == null) newLockPin(null);
+                else askPin("Enter PIN", "Your current parental PIN", pinNow::equals, () -> handler.post(() -> newLockPin(null)));
+            });
+        });
+        items.add(lock);
         TextView android = menuItem("Android Settings");   // the TV's own: network, picture, sound
         android.setOnClickListener(v -> { closeMenu(false); start(new Intent(Settings.ACTION_SETTINGS)); });
         items.add(android);
@@ -1163,7 +1432,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         for (int i = 0; i < items.size(); i++) {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = i == 0 ? 0 : dp(i == items.size() - 3 || (i == 1 && watch != null && watch.bad()) ? 18 : 4);
+            lp.topMargin = i == 0 ? 0 : dp(i == firstAction || (i == 1 && watch != null && watch.bad()) ? 18 : 4);
             list.addView(items.get(i), lp);
         }
         scroll.addView(list);
@@ -1364,6 +1633,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     // ---- launching -------------------------------------------------------------------------
 
     private void launch(ActivityInfo ai) {
+        Apps.opened(prefs, ai.packageName);
         Intent i = new Intent(Intent.ACTION_MAIN)
                 .addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
                 .setComponent(new ComponentName(ai.packageName, ai.name))
@@ -1454,6 +1724,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     }
 
     private void launchPackage(String pkg) {
+        Apps.opened(prefs, pkg);
         PackageManager pm = getPackageManager();
         Intent i = pm.getLeanbackLaunchIntentForPackage(pkg);
         if (i == null) i = pm.getLaunchIntentForPackage(pkg);
@@ -1513,8 +1784,9 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
                 break;
             case "name": greeting.setText(greetingText()); break;
             case "city": weatherAt = 0; refreshWeather(); break;
+            case "hidden": case "groups": case "recent": rebuildSoon(); break;
             default:
-                if (key.startsWith("name:")) rebuildSoon();
+                if (key.startsWith("name:") || key.startsWith("label:") || key.startsWith("art:")) rebuildSoon();
         }
     };
 

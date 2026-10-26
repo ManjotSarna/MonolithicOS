@@ -86,6 +86,22 @@ h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
 .app .art.icon img{width:42%;height:auto;object-fit:contain}
 .app span{font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .app:active .art{transform:scale(.93)}
+.apps-head{display:flex;align-items:baseline;justify-content:space-between}
+.apps-head .edit{font-size:14px;color:var(--blue);padding:8px 4px}
+.grid.editing .app .art{outline:1.5px dashed rgba(255,255,255,.35);outline-offset:2px}
+.app.off .art{opacity:.35}
+.app .badge{position:absolute;top:5px;right:5px;font-size:11px;background:rgba(0,0,0,.6);border-radius:8px;padding:2px 6px}
+.app .art{position:relative}
+.opts{display:flex;flex-direction:column}
+.opts button{text-align:left;padding:15px 16px;font-size:16px}
+.opts button + button{border-top:1px solid rgba(255,255,255,.07)}
+.opts button.on{color:var(--blue)}
+.opts .lbl{font-size:12px;color:var(--faint);padding:14px 16px 6px;text-transform:uppercase;letter-spacing:.06em}
+.grow{display:flex;align-items:center;gap:12px;padding:14px 16px}
+.grow + .grow{border-top:1px solid rgba(255,255,255,.07)}
+.grow b{flex:1;font-weight:500}.grow span{font-size:12px;color:var(--faint)}
+.grow button{font-size:13px;color:var(--blue);padding:6px}
+textarea.bk{width:100%;height:160px;font:12px ui-monospace,monospace;background:rgba(255,255,255,.08);border:1px solid var(--line);border-radius:14px;padding:10px;color:inherit;user-select:text;-webkit-user-select:text}
 .list{display:flex;flex-direction:column;gap:10px}
 .input{display:flex;align-items:center;gap:14px;border-radius:20px;padding:14px 14px 14px 16px;text-align:left;width:100%}
 .input .dot{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.18);flex:none}
@@ -217,8 +233,14 @@ h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
   </section>
 
   <section class="tab" id="tab-apps" hidden>
-    <h2>Apps</h2>
+    <div class="apps-head"><h2>Apps</h2><button class="edit" id="appsEdit">Edit</button></div>
     <div class="grid" id="apps"></div>
+    <div id="groupsBox" hidden>
+      <h2>Rows &amp; Folders</h2>
+      <div class="card glass" id="groupList"></div>
+      <div class="addcards"><button class="glass" id="addRow">+ Row</button><button class="glass" id="addFolder">+ Folder</button></div>
+      <p class="small-print">Rows sit under the dock with your name on them; folders sit among your apps. Tap an app to put it in one. Locked apps ask for your parental PIN on the TV.</p>
+    </div>
     <h2 id="inputsHead">Inputs</h2>
     <div class="list" id="inputs"></div>
   </section>
@@ -235,6 +257,9 @@ h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
     <h2>TV</h2>
     <div class="card glass" id="tvRows"></div>
     <p class="small-print" id="tvNote"></p>
+    <h2>Backup</h2>
+    <div class="addcards"><button class="glass" id="saveBackup">Save Backup</button><button class="glass" id="loadBackup">Restore</button></div>
+    <p class="small-print">Every setting, your dock, rows, folders, names and cards, as one file: for a new TV or after a reset. Not your PINs or photos.</p>
   </section>
 </main>
 
@@ -260,6 +285,23 @@ h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
   </div>
 </div>
 
+<div class="sheet" id="appSheet" hidden>
+  <div class="box glass">
+    <div class="sheet-head"><b id="appSheetName"></b><button class="x" id="appClose" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></button></div>
+    <div class="card glass opts" id="appOpts"></div>
+  </div>
+</div>
+
+<div class="sheet" id="backupSheet" hidden>
+  <div class="box glass">
+    <div class="sheet-head"><b id="backupHead">Backup</b><button class="x" id="backupClose" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></button></div>
+    <textarea class="bk" id="backupText" spellcheck="false"></textarea>
+    <div class="addcards"><button class="glass" id="backupCopy">Copy</button><button class="glass" id="backupFile">From a file</button><button class="glass" id="backupGo">Restore</button></div>
+  </div>
+</div>
+<input type="file" id="artFile" accept="image/*" hidden>
+<input type="file" id="backupPick" accept="application/json,.json,text/plain" hidden>
+
 <div class="toast glass" id="toast"></div>
 <input type="file" id="file" accept="image/*" hidden>
 
@@ -267,7 +309,7 @@ h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
 "use strict";
 const $ = s => document.querySelector(s);
 const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms || 8); } catch (e) {} };
-let state = null, appsSig = "", inputsSig = "", wallsSig = "", tab = "remote";
+let state = null, appsSig = "", inputsSig = "", wallsSig = "", groupsSig = "", tab = "remote", editing = false;
 
 let toastTimer;
 function toast(msg, ms) {
@@ -502,6 +544,137 @@ async function set(k, v) {
   catch (e) { if (e.message !== "pin") { toast(e.message === "installer" ? "Run the MonolithicOS installer once to allow this" : "Couldn't change that"); refresh(); } }
 }
 
+// ---- managing apps: Edit, then tap an app ----
+$("#appsEdit").addEventListener("click", () => {
+  editing = !editing;
+  $("#appsEdit").textContent = editing ? "Done" : "Edit";
+  buzz(8);
+  if (state) render(state);
+});
+let sheetApp = null;
+function openApp(a) {
+  sheetApp = a;
+  $("#appSheetName").textContent = a.name || a.label;
+  const o = $("#appOpts");
+  o.innerHTML = "";
+  const add = (label, fn, on) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    if (on) b.classList.add("on");
+    b.addEventListener("click", async () => { buzz(8); try { await fn(); } catch (e) { if (e.message !== "pin") toast("Couldn't do that"); } });
+    o.appendChild(b);
+  };
+  const op = async (q) => { const s = await api("/api/app?pkg=" + encodeURIComponent(a.pkg) + "&" + q, ""); render(s); return s; };
+  const close = () => { $("#appSheet").hidden = true; };
+  add("Rename", async () => {
+    const v = prompt("Name on the TV (empty for its own)", a.name || "");
+    if (v === null) return;
+    await op("op=name&v=" + encodeURIComponent(v.trim())); close();
+  });
+  add("Choose a Picture", () => $("#artFile").click());
+  if (a.art) add("Use Its Own Picture", async () => { render(await api("/api/art/delete?pkg=" + encodeURIComponent(a.pkg), "")); close(); });
+  add(a.hidden ? "Show on the TV" : "Hide from the TV", async () => { await op("op=" + (a.hidden ? "show" : "hide")); close(); });
+  add(a.locked ? "Unlock" : "Lock with PIN", async () => {
+    if (!a.locked && !state.lockpin) {
+      const p = prompt("Set a four-digit parental PIN for locked apps");
+      if (p === null) return;
+      if (!/^\d{4}$/.test(p)) { toast("Four digits, please"); return; }
+      render(await api("/api/lockpin?v=" + p, ""));
+    }
+    await op("op=" + (a.locked ? "unlock" : "lock")); close();
+  });
+  const groups = state.groups || [];
+  if (groups.length) {
+    const l = document.createElement("div"); l.className = "lbl"; l.textContent = "Put it in"; o.appendChild(l);
+    add("Nowhere (Apps)", async () => { await op("op=group&v="); close(); }, !a.group);
+    groups.forEach(g => add(g.name + (g.type === "folder" ? "  (folder)" : "  (row)"),
+      async () => { await op("op=group&v=" + encodeURIComponent(g.id)); close(); }, a.group === g.id));
+  }
+  if (state.lockpin) add("Clear the Parental PIN", async () => {
+    if (!confirm("Clear the parental PIN? Every app unlocks.")) return;
+    render(await api("/api/lockpin?v=", "")); close();
+  });
+  $("#appSheet").hidden = false;
+}
+$("#appClose").addEventListener("click", () => { $("#appSheet").hidden = true; });
+$("#appSheet").addEventListener("click", e => { if (e.target.id === "appSheet") $("#appSheet").hidden = true; });
+$("#artFile").addEventListener("change", async e => {   // cut to 16:9, 640 x 360, on the phone
+  const f = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!f || !sheetApp) return;
+  try {
+    const bmp = await createImageBitmap(f);
+    const c = document.createElement("canvas");
+    c.width = 640; c.height = 360;
+    const s = Math.max(640 / bmp.width, 360 / bmp.height), w = bmp.width * s, h = bmp.height * s;
+    c.getContext("2d").drawImage(bmp, (640 - w) / 2, (360 - h) / 2, w, h);
+    const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.9));
+    render(await api("/api/art?pkg=" + encodeURIComponent(sheetApp.pkg), blob, { "Content-Type": "image/jpeg" }));
+    $("#appSheet").hidden = true;
+    toast("On the TV now");
+  } catch (err) { if (err.message !== "pin") toast("Couldn't send that picture"); }
+});
+for (const [id, type, word] of [["#addRow", "row", "Row"], ["#addFolder", "folder", "Folder"]]) {
+  $(id).addEventListener("click", async () => {
+    const v = prompt("Name for the " + word.toLowerCase() + " (Streaming, Sports, Kids...)");
+    if (!v || !v.trim()) return;
+    try { render(await api("/api/group?op=add&type=" + type + "&name=" + encodeURIComponent(v.trim()), "")); toast(word + " added: tap an app to put it in"); }
+    catch (e) { if (e.message !== "pin") toast("Couldn't add it"); }
+  });
+}
+
+// ---- backup ----
+$("#saveBackup").addEventListener("click", async () => {
+  try {
+    const r = await fetch("/api/backup", { credentials: "same-origin" });
+    if (r.status === 401) { showLogin(); return; }
+    const text = await r.text();
+    $("#backupHead").textContent = "Your Backup";
+    $("#backupText").value = text;
+    $("#backupGo").hidden = true;
+    $("#backupFile").hidden = true;
+    $("#backupCopy").hidden = false;
+    $("#backupSheet").hidden = false;
+    const a = document.createElement("a");   // a browser saves it as a file; the app shows it to copy
+    a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+    a.download = "MonolithicOS-backup.json";
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) { toast("Couldn't get the backup"); }
+});
+$("#loadBackup").addEventListener("click", () => {
+  $("#backupHead").textContent = "Restore";
+  $("#backupText").value = "";
+  $("#backupText").placeholder = "Paste your backup here, or pick the file";
+  $("#backupGo").hidden = false;
+  $("#backupFile").hidden = false;
+  $("#backupCopy").hidden = true;
+  $("#backupSheet").hidden = false;
+});
+$("#backupCopy").addEventListener("click", () => {
+  const t = $("#backupText");
+  t.select();
+  try { document.execCommand("copy"); toast("Copied: keep it in your notes"); } catch (e) { toast("Select it all and copy"); }
+});
+$("#backupFile").addEventListener("click", () => $("#backupPick").click());
+$("#backupPick").addEventListener("change", async e => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (f) $("#backupText").value = await f.text();
+});
+$("#backupGo").addEventListener("click", async () => {
+  const text = $("#backupText").value.trim();
+  if (!text) return;
+  if (!confirm("Restore this backup? The TV's settings are replaced, and MonolithicOS restarts.")) return;
+  try {
+    await api("/api/restore", text, { "Content-Type": "application/json" });
+    $("#backupSheet").hidden = true;
+    toast("Restored: MonolithicOS is restarting", 4000);
+    setTimeout(() => location.reload(), 4500);
+  } catch (e) { if (e.message !== "pin") toast(e.message && e.message.length < 60 ? e.message : "That isn't a MonolithicOS backup"); }
+});
+$("#backupClose").addEventListener("click", () => { $("#backupSheet").hidden = true; });
+$("#backupSheet").addEventListener("click", e => { if (e.target.id === "backupSheet") $("#backupSheet").hidden = true; });
+
 // ---- wallpaper upload: shrunk on the phone first, so a 50 MP photo goes over as ~1 MB ----
 $("#file").addEventListener("change", async e => {
   const f = e.target.files && e.target.files[0];
@@ -542,26 +715,57 @@ function render(s) {
       : '<svg viewBox="0 0 24 24"><path d="M7.5 5.5v13l10.5-6.5z"/></svg>';
   }
 
-  const aSig = JSON.stringify(s.apps);
+  const aSig = JSON.stringify([s.apps, editing]);
   if (aSig !== appsSig) {
     appsSig = aSig;
     const g = $("#apps");
     g.innerHTML = "";
+    g.classList.toggle("editing", editing);
     s.apps.forEach(a => {
       const b = document.createElement("button");
-      b.className = "app";
+      b.className = "app" + (a.hidden ? " off" : "");
       b.innerHTML = '<div class="art"><img loading="lazy" alt=""></div><span></span>';
       const img = b.querySelector("img");
       img.onload = () => { if (img.naturalWidth === img.naturalHeight) b.querySelector(".art").classList.add("icon"); };
-      img.src = "/api/icon?pkg=" + encodeURIComponent(a.pkg);
-      b.querySelector("span").textContent = a.label;
+      img.src = "/api/icon?pkg=" + encodeURIComponent(a.pkg) + (a.art ? "&v=" + Date.now() : "");
+      const badges = [a.locked ? "Locked" : "", a.hidden ? "Hidden" : ""].filter(Boolean).join(" · ");
+      if (badges) { const t = document.createElement("i"); t.className = "badge"; t.textContent = badges; b.querySelector(".art").appendChild(t); }
+      b.querySelector("span").textContent = a.name || a.label;
       b.addEventListener("click", async () => {
         buzz(10);
-        try { await api("/api/launch?pkg=" + encodeURIComponent(a.pkg), ""); toast("Opening " + a.label); }
-        catch (e) { if (e.message !== "pin") toast("Couldn't open " + a.label); }
+        if (editing) { openApp(a); return; }
+        try { await api("/api/launch?pkg=" + encodeURIComponent(a.pkg), ""); toast("Opening " + (a.name || a.label)); }
+        catch (e) { if (e.message !== "pin") toast("Couldn't open " + (a.name || a.label)); }
       });
       g.appendChild(b);
     });
+  }
+  const gSig = JSON.stringify([s.groups, editing]);
+  if (gSig !== groupsSig) {
+    groupsSig = gSig;
+    $("#groupsBox").hidden = !editing && !(s.groups || []).length;
+    const l = $("#groupList");
+    l.innerHTML = "";
+    (s.groups || []).forEach(gr => {
+      const n = s.apps.filter(a => a.group === gr.id).length;
+      const row = document.createElement("div");
+      row.className = "grow";
+      row.innerHTML = "<b></b><span></span><button>Rename</button><button>Delete</button>";
+      row.querySelector("b").textContent = gr.name;
+      row.querySelector("span").textContent = (gr.type === "folder" ? "Folder" : "Row") + " · " + n + (n === 1 ? " app" : " apps");
+      const [ren, del] = row.querySelectorAll("button");
+      ren.addEventListener("click", async () => {
+        const v = prompt("Name", gr.name);
+        if (!v || !v.trim()) return;
+        try { render(await api("/api/group?op=rename&id=" + encodeURIComponent(gr.id) + "&name=" + encodeURIComponent(v.trim()), "")); } catch (e) {}
+      });
+      del.addEventListener("click", async () => {
+        if (!confirm("Delete " + gr.name + "? Its apps go back to Apps.")) return;
+        try { render(await api("/api/group?op=del&id=" + encodeURIComponent(gr.id), "")); } catch (e) {}
+      });
+      l.appendChild(row);
+    });
+    if (!(s.groups || []).length) l.innerHTML = '<div class="grow"><span>None yet</span></div>';
   }
 
   const iSig = JSON.stringify(s.inputs);

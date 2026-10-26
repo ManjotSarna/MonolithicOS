@@ -24,6 +24,8 @@ import android.media.tv.TvInputInfo;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import android.media.tv.TvInputManager;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.TextUtils;
@@ -388,10 +390,20 @@ final class Remote {
         }
         switch (p) {
             case "/api/state": send(out, 200, "application/json", state()); return;
-            case "/api/icon": image(out, "icon:" + r.q("pkg"), () -> icon(r.q("pkg")), "image/png"); return;
+            case "/api/icon": {   // your picture if you gave it one (its time in the key, so a new one isn't cached)
+                File art = Apps.art(app, r.q("pkg"));
+                if (art.exists()) image(out, "art:" + r.q("pkg") + art.lastModified(), () -> java.nio.file.Files.readAllBytes(art.toPath()), "image/jpeg");
+                else image(out, "icon:" + r.q("pkg"), () -> icon(r.q("pkg")), "image/png");
+                return;
+            }
             case "/api/thumb": image(out, "thumb:" + r.q("path") + new File(r.q("path")).lastModified(),
                     () -> thumb(r.q("path")), "image/jpeg"); return;
             case "/api/teams": send(out, 200, "application/json", Team.search(app, r.q("q"))); return;
+            case "/api/backup": {   // every setting as one file (not the PINs); your pictures and photos stay on the TV
+                send(out, 200, "application/json", backup().getBytes(StandardCharsets.UTF_8),
+                        "Content-Disposition: attachment; filename=\"MonolithicOS-backup.json\"");
+                return;
+            }
             default: break;
         }
         if (!"POST".equals(r.method)) {
@@ -410,7 +422,63 @@ final class Remote {
                 return;
             }
             case "/api/launch": {
-                send(out, launch(r.q("pkg")) ? 200 : 404, "application/json", "{}");
+                boolean ok = launch(r.q("pkg"));
+                if (ok) Apps.opened(prefs, r.q("pkg"));
+                send(out, ok ? 200 : 404, "application/json", "{}");
+                return;
+            }
+            case "/api/app": {   // one app: hide, show, lock, unlock, or name (empty: its own)
+                String pkg = r.q("pkg"), op = r.q("op");
+                switch (op) {
+                    case "hide": case "show": Apps.put(prefs, "hidden", pkg, "hide".equals(op)); break;
+                    case "lock": case "unlock":
+                        if ("lock".equals(op) && Apps.lockPin(prefs) == null) {
+                            send(out, 409, "application/json", "{\"error\":\"no pin\"}");
+                            return;
+                        }
+                        Apps.put(prefs, "locked", pkg, "lock".equals(op));
+                        break;
+                    case "name": {
+                        String n = r.q("v").trim();
+                        if (n.length() > 24) n = n.substring(0, 24);
+                        if (n.isEmpty()) prefs.edit().remove("label:" + pkg).apply(); else prefs.edit().putString("label:" + pkg, n).apply();
+                        break;
+                    }
+                    case "group": Apps.move(prefs, pkg, r.q("v").isEmpty() ? null : r.q("v")); break;
+                    default: send(out, 400, "application/json", "{\"error\":\"op\"}"); return;
+                }
+                send(out, 200, "application/json", state());
+                return;
+            }
+            case "/api/art": art(r, out); return;   // your picture for an app (POST, shrunk on the phone)
+            case "/api/art/delete": {
+                Apps.art(app, r.q("pkg")).delete();
+                prefs.edit().putLong("art:" + r.q("pkg"), System.currentTimeMillis()).apply();
+                send(out, 200, "application/json", state());
+                return;
+            }
+            case "/api/group": {   // rows and folders: add (type, name), rename (id, name), del (id)
+                String op = r.q("op"), name = r.q("name").trim();
+                if ("add".equals(op) && !name.isEmpty()) Apps.add(prefs, r.q("type"), name);
+                else if ("rename".equals(op) && !name.isEmpty()) Apps.rename(prefs, r.q("id"), name);
+                else if ("del".equals(op)) Apps.remove(prefs, r.q("id"));
+                else { send(out, 400, "application/json", "{\"error\":\"op\"}"); return; }
+                send(out, 200, "application/json", state());
+                return;
+            }
+            case "/api/lockpin": {   // the parental PIN: four digits, or empty to clear (which unlocks everything)
+                String v = r.q("v");
+                if (v.isEmpty()) prefs.edit().remove("lockpin").putString("locked", "").apply();
+                else if (v.matches("\\d{4}")) prefs.edit().putString("lockpin", v).apply();
+                else { send(out, 400, "application/json", "{\"error\":\"pin\"}"); return; }
+                send(out, 200, "application/json", state());
+                return;
+            }
+            case "/api/restore": {
+                String err = restore(r.text());
+                send(out, err == null ? 200 : 400, "application/json", err == null ? "{\"ok\":true}" : "{\"error\":\"" + err + "\"}");
+                if (err == null) new Handler(Looper.getMainLooper()).postDelayed(   // Home starts again with it all
+                        () -> android.os.Process.killProcess(android.os.Process.myPid()), 800);
                 return;
             }
             case "/api/input": {
@@ -660,6 +728,88 @@ final class Remote {
         }
     }
 
+    /** Your picture for an app, from the phone (already cut to 16:9 there). */
+    private static void art(Req r, OutputStream out) throws IOException {
+        String pkg = r.q("pkg");
+        if (pkg.isEmpty() || r.length > 4_000_000) {
+            send(out, 400, "application/json", "{\"error\":\"bad\"}");
+            return;
+        }
+        File dest = Apps.art(app, pkg), tmp = new File(dest.getPath() + ".incoming");
+        try (FileOutputStream f = new FileOutputStream(tmp)) {
+            byte[] buf = new byte[65536];
+            int left = r.length;
+            while (left > 0) {
+                int n = r.in.read(buf, 0, Math.min(buf.length, left));
+                if (n < 0) throw new IOException("short upload");
+                f.write(buf, 0, n);
+                left -= n;
+            }
+        }
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(tmp.getPath(), o);
+        if (o.outWidth < 64 || !tmp.renameTo(dest)) {
+            tmp.delete();
+            send(out, 400, "application/json", "{\"error\":\"not a picture\"}");
+            return;
+        }
+        prefs.edit().putLong("art:" + pkg, System.currentTimeMillis()).apply();   // Home rebuilds with it
+        send(out, 200, "application/json", state());
+    }
+
+    // never in a backup: the PINs, the phone sessions, and what's only true of this TV
+    private static final java.util.Set<String> PRIVATE = new java.util.HashSet<>(Arrays.asList(
+            "pin", "lockpin", "token", "intro", "weather", "wcode", "wcodeAt", "wallpaper"));
+
+    private static String backup() {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("monolithicos", 1);
+            JSONObject v = new JSONObject();
+            for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
+                String k = e.getKey();
+                if (PRIVATE.contains(k) || k.startsWith("art:") || k.startsWith("tok") || k.startsWith("wd_")
+                        || k.startsWith("f1") && !"f1".equals(k) || k.startsWith("tm:")) continue;   // caches, the watchdog's snapshot
+                Object x = e.getValue();
+                JSONObject t = new JSONObject();
+                if (x instanceof Boolean) t.put("b", x);
+                else if (x instanceof Integer) t.put("i", x);
+                else if (x instanceof Long) t.put("l", x);
+                else if (x instanceof Float) t.put("f", (double) (Float) x);
+                else if (x instanceof String) t.put("s", x);
+                else continue;
+                v.put(k, t);
+            }
+            o.put("settings", v);
+        } catch (JSONException ignored) { }
+        return o.toString();
+    }
+
+    /** Null when done, else why not. */
+    private static String restore(String text) {
+        try {
+            JSONObject o = new JSONObject(text);
+            if (o.optInt("monolithicos") != 1) return "not a MonolithicOS backup";
+            JSONObject v = o.getJSONObject("settings");
+            SharedPreferences.Editor e = prefs.edit();
+            for (java.util.Iterator<String> it = v.keys(); it.hasNext(); ) {
+                String k = it.next();
+                if (PRIVATE.contains(k) || k.startsWith("tok") || k.startsWith("wd_")) continue;
+                JSONObject t = v.getJSONObject(k);
+                if (t.has("b")) e.putBoolean(k, t.getBoolean("b"));
+                else if (t.has("i")) e.putInt(k, t.getInt("i"));
+                else if (t.has("l")) e.putLong(k, t.getLong("l"));
+                else if (t.has("f")) e.putFloat(k, (float) t.getDouble("f"));
+                else if (t.has("s")) e.putString(k, t.getString("s"));
+            }
+            e.commit();   // written before Home restarts
+            return null;
+        } catch (JSONException e) {
+            return "not a MonolithicOS backup";
+        }
+    }
+
     /** A photo from the phone (already resized there): saved, picked, and Home switches to it. */
     private static void upload(Req r, OutputStream out) throws IOException {
         File dir = Wallpapers.uploads(app);
@@ -764,12 +914,29 @@ final class Remote {
         }
         j.append(']');
 
+        List<Apps.Group> groups = Apps.groups(prefs);
+        java.util.Set<String> hidden = Apps.set(prefs, "hidden"), locked = Apps.set(prefs, "locked");
+        j.append(",\"lockpin\":").append(Apps.lockPin(prefs) != null);
+        j.append(",\"groups\":[");
+        for (int i = 0; i < groups.size(); i++) {
+            Apps.Group g = groups.get(i);
+            if (i > 0) j.append(',');
+            j.append("{\"id\":").append(js(g.id)).append(",\"type\":").append(js(g.type)).append(",\"name\":").append(js(g.name)).append('}');
+        }
+        j.append(']');
         j.append(",\"apps\":[");
         boolean first = true;
         for (Map.Entry<String, String> e : apps().entrySet()) {
             if (!first) j.append(',');
             first = false;
-            j.append("{\"pkg\":").append(js(e.getKey())).append(",\"label\":").append(js(e.getValue())).append('}');
+            String pkg = e.getKey();
+            Apps.Group g = Apps.groupOf(groups, pkg);
+            j.append("{\"pkg\":").append(js(pkg)).append(",\"label\":").append(js(e.getValue()))
+                    .append(",\"name\":").append(js(Apps.label(prefs, pkg)))
+                    .append(",\"hidden\":").append(hidden.contains(pkg))
+                    .append(",\"locked\":").append(locked.contains(pkg))
+                    .append(",\"art\":").append(Apps.art(app, pkg).exists())
+                    .append(",\"group\":").append(js(g != null ? g.id : null)).append('}');
         }
         j.append(']');
 
