@@ -13,6 +13,23 @@ a clock, nothing else, and it's quick.
 
 <p align="center"><img src="docs/screenshots/tv-home.jpg" alt="MonolithicOS home screen" width="100%"></p>
 
+## Google TV vs MonolithicOS
+
+| | Google TV home | MonolithicOS |
+|---|---|---|
+| **Size** | 24.5 MB app, **~327 MB** with its data and cache | **0.4 MB** app, **~5 MB** all in |
+| **Home screen** | Promoted shows, sponsored rows, autoplaying trailers | **Your apps.** That's it |
+| **Ads** | Yes | **None** |
+| **Tracking** | Uses what you watch for recommendations and ads | **None.** No account, no analytics |
+| **Ad & tracker blocking** | Not built in | **The whole TV**, one switch (AdGuard DNS) |
+| **In the background** | Refreshing rows and recommendations | **Nothing** when you're not using it |
+| **Phone remote** | Needs Google's app and your Google account | **Any phone browser.** No account, stays on your Wi-Fi, PIN-locked |
+| **Live scores** | | **F1 and your teams**, right on the home screen |
+| **Source code** | Closed | **Open.** Read every line |
+| **Going back** | | **One double-click**, 10 seconds |
+
+<sub>Sizes measured on my TCL QM851G (Google TV 14), October 2026.</sub>
+
 ## What it does
 
 - **Fast.** The whole thing is about 400 KB and uses ~30 MB of RAM. Nothing runs in the background, no rows loading.
