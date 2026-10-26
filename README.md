@@ -30,7 +30,7 @@ a clock, nothing else, and it's quick.
 
 ## What it does
 
-- **Fast.** The whole thing is about 400 KB and uses ~30 MB of RAM. Nothing runs in the background, no rows loading.
+- **Fast.** The whole thing is about 400 KB and uses ~37 MB of RAM. Nothing runs in the background, no rows loading.
 - **Looks like tvOS.** Frosted glass dock, apps tilt and lift when you land on them, they zoom open.
 - **No ads, no tracking.** No account either.
 - **Cards for F1 and your teams.** Countdown to the next race or game, live score while it's on, results after.
