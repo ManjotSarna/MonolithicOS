@@ -102,7 +102,7 @@ h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
 .wall img{width:100%;height:100%;object-fit:cover;display:block}
 .wall.on{outline:2.5px solid #fff;outline-offset:2px}
 .wall .x{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.55);display:grid;place-items:center;font-size:15px;line-height:1}
-.wall.aurora{background:radial-gradient(circle at 25% 20%,rgba(46,107,255,.55),transparent 60%),radial-gradient(circle at 90% 5%,rgba(176,77,255,.4),transparent 55%),#000;display:grid;place-items:end start;padding:8px 10px;color:rgba(255,255,255,.75);font-size:12px}
+.wall.aurora-tile{background:radial-gradient(circle at 25% 20%,rgba(46,107,255,.55),transparent 60%),radial-gradient(circle at 90% 5%,rgba(176,77,255,.4),transparent 55%),#000;display:grid;place-items:end start;padding:8px 10px;color:rgba(255,255,255,.75);font-size:12px}
 .wall.add{display:grid;place-items:center;color:var(--dim);font-size:13px;gap:4px;align-content:center;justify-items:center}
 
 /* settings rows */
@@ -604,7 +604,7 @@ function render(s) {
     add.addEventListener("click", () => $("#file").click());
     w.appendChild(add);
     const aurora = document.createElement("button");   // no photo: the aurora, lights in the focused app's colours
-    aurora.className = "wall aurora" + (s.settings.photo ? "" : " on");
+    aurora.className = "wall aurora-tile" + (s.settings.photo ? "" : " on");
     aurora.innerHTML = "<span>Aurora</span>";
     aurora.addEventListener("click", async () => {
       buzz(8);
