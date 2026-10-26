@@ -155,10 +155,13 @@ final class Tile extends FrameLayout {
         @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
 
-    /** The darkening over an app card, above the art and under the gloss. */
+    /**
+     * The darkening over an app card: over everything on it, the gloss and lit rim included, so Dim App Icons
+     * dims the whole card evenly (under it, the rim stayed bright and the logo looked cheap).
+     */
     @Override
-    protected void dispatchDraw(Canvas c) {
-        super.dispatchDraw(c);
+    public void onDrawForeground(Canvas c) {
+        super.onDrawForeground(c);
         float s = shade >= 0 ? shade : rest();
         if (s > 0.004f) c.drawColor(Color.argb(Math.round(255 * s), 0, 0, 0));
     }
