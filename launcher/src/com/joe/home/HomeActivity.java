@@ -60,6 +60,7 @@ import android.view.ViewOutlineProvider;
 import android.view.ViewParent;
 import android.view.WindowManager;
 import android.view.ViewTreeObserver;
+import android.view.animation.DecelerateInterpolator;
 import android.view.animation.Interpolator;
 import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
@@ -170,6 +171,8 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     // firmware-update watchdog
     private TextView watchBanner;
     private Watchdog.Report watch;
+    // the intro: black over the whole window while MonolithicOS's name draws together, then Home comes up
+    private FrameLayout curtain;
     private long watchAt;
 
     // ---- lifecycle -------------------------------------------------------------------------
@@ -270,6 +273,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         build();
         applyLook();
         root.post(this::goTop);
+        intro();   // whenever Home starts fresh: the TV coming on, after an update
 
         IntentFilter f = new IntentFilter();
         f.addAction(Intent.ACTION_PACKAGE_ADDED);
@@ -297,6 +301,10 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             });
         });
         checkWatchdog();
+        // the screensaver is always MonolithicOS's (no setting any more): put it back if it isn't
+        if (Tweaks.allowed(this) && !Tweaks.ambient(this)) {
+            try { Tweaks.setAmbient(this, true); } catch (RuntimeException ignored) { }
+        }
     }
 
     @Override
@@ -359,6 +367,11 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         super.onNewIntent(intent);
         // Home pressed while Home was already showing: back to the first tile, like Apple TV.
         if (SystemClock.uptimeMillis() - pausedAt < 500) goTop();
+        // Home pressed in an app: the intro covers Home coming back, which then fades in under it
+        else if (!resumed && Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(Intent.CATEGORY_HOME)) {
+            intro();
+            goTop();
+        }
     }
 
     @Override
@@ -754,6 +767,154 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         if (!dockTiles.isEmpty()) dockTiles.get(0).requestFocus();
     }
 
+    // ---- intro ------------------------------------------------------------------------------
+
+    /**
+     * MonolithicOS's name, its letters drawing together out of black; then Home comes up: the wallpaper settling
+     * as if the camera just stopped, the dock rising into place, the cards gliding in. About three seconds: when
+     * Home starts fresh, and when Home is pressed in an app. The curtain sits on the window itself, so no card
+     * added meanwhile lands on top.
+     */
+    private void intro() {
+        if (curtain != null) return;   // already playing
+        curtain = new FrameLayout(this);
+        curtain.setBackgroundColor(Color.BLACK);
+        ((ViewGroup) getWindow().getDecorView()).addView(curtain, match());
+        root.setVisibility(View.INVISIBLE);   // nothing painted under the black meanwhile (snow included)
+        Wordmark word = new Wordmark(this, "MonolithicOS", thin, TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP, 46, getResources().getDisplayMetrics()));
+        word.setAlpha(0f);
+        curtain.addView(word, match());
+        // Start once the TV is drawing smoothly: coming back from YouTube, it tears its player down for the first
+        // half second (frames of 30-140 ms, with a few smooth ones between), and an animation started then
+        // stutters. Ten frames in a row on time, or a second at most; from a light app that's a sixth of a second.
+        long until = SystemClock.uptimeMillis() + 1000;
+        android.view.Choreographer.getInstance().postFrameCallback(new android.view.Choreographer.FrameCallback() {
+            long last;
+            int smooth;
+            @Override public void doFrame(long nanos) {
+                smooth = last != 0 && nanos - last < 20_000_000L ? smooth + 1 : 0;
+                last = nanos;
+                if (smooth >= 10 || SystemClock.uptimeMillis() > until) playIntro(word);
+                else android.view.Choreographer.getInstance().postFrameCallback(this);
+            }
+        });
+        curtain.invalidate();
+    }
+
+    private void playIntro(Wordmark word) {
+        // stepped by frames, not the clock: if the TV stalls (YouTube still cleaning up), the letters hold for an
+        // instant instead of jumping to catch up
+        android.view.Choreographer.getInstance().postFrameCallback(new android.view.Choreographer.FrameCallback() {
+            long last;
+            float t;   // ms of the animation shown so far
+            @Override public void doFrame(long nanos) {
+                t += last == 0 ? 0f : Math.min(1000f / 60f, (nanos - last) / 1e6f);
+                last = nanos;
+                word.spacing(0.42f - 0.36f * glide.getInterpolation(Math.min(1f, t / 1500f)));
+                word.setAlpha(glide.getInterpolation(Math.min(1f, t / 900f)));
+                if (curtain == null) return;
+                if (t < 1700f) android.view.Choreographer.getInstance().postFrameCallback(this);
+                else outro(word);
+            }
+        });
+    }
+
+    /** The name drifts up and away, then Home comes up once its wallpaper is in (2 s at most). */
+    private void outro(Wordmark word) {
+        word.animate().alpha(0f).translationY(-dp(10)).setDuration(500).setInterpolator(glide).start();
+        long start = SystemClock.uptimeMillis();
+        handler.postDelayed(new Runnable() {
+            @Override public void run() {
+                if (prefs.getBoolean("photo", true) && !backdrop.hasPhoto() && SystemClock.uptimeMillis() - start < 2000) {
+                    handler.postDelayed(this, 50);
+                    return;
+                }
+                reveal();
+            }
+        }, 300);
+    }
+
+    /**
+     * The intro's name, its letters drawing together. Drawn letter by letter at moving positions: animating a
+     * TextView's letter spacing re-measured and re-laid out the whole window every frame, which stuttered
+     * whenever the TV was busy (coming back from YouTube).
+     */
+    private static final class Wordmark extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+        private final String text;
+        private final float[] advances;
+        private final float width, em;
+        private float spacing;
+
+        Wordmark(Context c, String text, Typeface face, float size) {
+            this(c, text, face, size, Color.WHITE);
+        }
+
+        Wordmark(Context c, String text, Typeface face, float size, int color) {
+            super(c);
+            this.text = text;
+            paint.setTypeface(face);
+            paint.setTextSize(size);
+            paint.setColor(color);
+            em = size;
+            advances = new float[text.length()];
+            paint.getTextWidths(text, advances);
+            float w = 0;
+            for (float a : advances) w += a;
+            width = w;
+        }
+
+        void spacing(float s) {
+            spacing = s;
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            float gap = spacing * em, total = width + gap * (text.length() - 1);
+            float x = (getWidth() - total) / 2f;
+            float y = getHeight() / 2f - (paint.ascent() + paint.descent()) / 2f;
+            for (int i = 0; i < text.length(); i++) {
+                c.drawText(text, i, i + 1, x, y, paint);
+                x += advances[i] + gap;
+            }
+        }
+    }
+
+    private void reveal() {
+        root.setVisibility(View.VISIBLE);
+        goTop();   // hidden, Home had lost focus: it would land on the first thing up top, the Inputs pill
+        root.post(this::lift);   // the first frame of Home (the heaviest) still under the black
+    }
+
+    private void lift() {
+        FrameLayout c = curtain;
+        c.animate().alpha(0f).setDuration(1100).setInterpolator(glide).withEndAction(() -> {
+            ((ViewGroup) c.getParent()).removeView(c);
+            curtain = null;
+        }).start();
+        View band = rows.isEmpty() ? null : rows.get(0);
+        Interpolator settle = new DecelerateInterpolator(1.6f);
+        // one animator for it all: these properties belong to nobody else, so nothing fights over them
+        ValueAnimator a = ValueAnimator.ofFloat(0f, 1800f);
+        a.setDuration(1800);
+        a.setInterpolator(null);
+        a.addUpdateListener(v -> {
+            float ms = (float) v.getAnimatedValue();
+            float s = 1f + 0.06f * (1f - settle.getInterpolation(part(ms, 0, 1700)));
+            backdrop.setScaleX(s);
+            backdrop.setScaleY(s);
+            if (band != null) band.setTranslationY(dp(70) * (1f - glide.getInterpolation(part(ms, 150, 1100))));
+            for (Card k : cards) k.box.setTranslationX(dp(40) * (1f - glide.getInterpolation(part(ms, 300, 1000))));
+        });
+        a.start();
+    }
+
+    private static float part(float ms, float start, float length) {
+        return Math.max(0f, Math.min(1f, (ms - start) / length));
+    }
+
     // ---- hold-OK menu ----------------------------------------------------------------------
 
     private void showMenu(Tile t) {
@@ -886,18 +1047,17 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
 
     private List<Choice> choices() {
         List<Choice> out = new ArrayList<>();
-        out.add(new Choice("Background", false, new String[]{"Wallpaper", "Aurora"},
-                () -> prefs.getBoolean("photo", true) ? 0 : 1,
-                i -> prefs.edit().putBoolean("photo", i == 0).apply()));
-        List<File> photos = Wallpapers.list(this);
-        if (photos.size() > 1) {
-            String[] names = new String[photos.size()];
-            for (int i = 0; i < names.length; i++) names[i] = photoName(photos.get(i));
-            out.add(new Choice("Wallpaper", false, names,
-                    () -> Math.max(0, photos.indexOf(Wallpapers.current(this))),
-                    i -> prefs.edit().putBoolean("photo", true).putString("wallpaper", photos.get(i).getPath()).apply())
-                    .note(() -> "More from the phone page"));
-        }
+        List<File> photos = Wallpapers.list(this);   // the photos, then the aurora (no photo: lights in the app's colours)
+        String[] names = new String[photos.size() + 1];
+        for (int i = 0; i < photos.size(); i++) names[i] = photoName(photos.get(i));
+        names[photos.size()] = "Aurora";
+        out.add(new Choice("Wallpaper", false, names,
+                () -> prefs.getBoolean("photo", true) ? Math.max(0, photos.indexOf(Wallpapers.current(this))) : photos.size(),
+                i -> {
+                    if (i == photos.size()) prefs.edit().putBoolean("photo", false).apply();
+                    else prefs.edit().putBoolean("photo", true).putString("wallpaper", photos.get(i).getPath()).apply();
+                })
+                .note(() -> "More from the phone page"));
         String[] dims = new String[11];   // Off, 10% ... 100% (black)
         for (int i = 0; i < dims.length; i++) dims[i] = i == 0 ? "Off" : i * 10 + "%";
         out.add(new Choice("Dim Wallpaper", false, dims,
@@ -936,12 +1096,10 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
                 .note(() -> "AdGuard DNS for the whole TV"));
         out.add(new Choice("Animations", true, new String[]{"Fast", "Normal"},
                 () -> Tweaks.fast(this) ? 0 : 1, i -> Tweaks.setFast(this, i == 0)));
-        out.add(new Choice("Screensaver", true, new String[]{"MonolithicOS", "Google TV"},
-                () -> Tweaks.ambient(this) ? 0 : 1, i -> Tweaks.setAmbient(this, i == 0)));
         out.add(new Choice("Cards", false, new String[]{"Show", "Hide"},
                 () -> prefs.getBoolean("cards_on", true) ? 0 : 1,
                 i -> prefs.edit().putBoolean("cards_on", i == 0).apply())
-                .note(this::cardsNote));
+                .note(() -> "Pick your cards on the phone page"));
         out.add(new Choice("Phone Remote", false, new String[]{"On", "Off"},
                 () -> prefs.getBoolean("remote", true) ? 0 : 1, i -> setRemote(i == 0))
                 .note(() -> prefs.getBoolean("remote", true)
@@ -1222,9 +1380,9 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     }
 
     /**
-     * tvOS-style launch: the focused card grows to fill the screen in the app's colour, its art
-     * gliding to the centre, and the app fades in over it. The overlay doubles as a splash while a
-     * cold app starts. One rounded outline and one image animating: cheap.
+     * The launch: the focused card opens out into the dark, its art gliding to the middle and lit in the app's
+     * own colour (the tile's coloured glow), and the app fades in over it. The overlay doubles as a splash
+     * while a cold app starts. One rounded outline and one image animating: cheap.
      */
     private void zoomLaunch(Tile t, Runnable go) {
         if (zoom != null) return;
@@ -1237,7 +1395,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
 
         FrameLayout z = new FrameLayout(this);
         zoom = z;
-        z.setBackgroundColor(t.inputId != null ? 0xFF161618 : shade(t.accent, 0.30f));
+        z.setBackgroundColor(0xFF050506);
         z.setOutlineProvider(new ViewOutlineProvider() {
             @Override public void getOutline(View v, Outline o) {
                 o.setRoundRect(Math.round(box[0]), Math.round(box[1]), Math.round(box[2]), Math.round(box[3]), box[4]);
@@ -1255,6 +1413,8 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             }
         });
         art.setClipToOutline(true);
+        art.setOutlineAmbientShadowColor(t.accent);
+        art.setOutlineSpotShadowColor(t.accent);
         z.addView(art, new FrameLayout.LayoutParams(tileW, tileH));
         root.addView(z, match());
 
@@ -1271,9 +1431,10 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             box[3] = (t0 + h0) + (sh - t0 - h0) * e;
             box[4] = radius * s0 * (1 - e);
             z.invalidateOutline();
-            float s = s0 * (1f + 0.55f * e);
+            float s = s0 * (1f + 0.08f * e);
             art.setScaleX(s);
             art.setScaleY(s);
+            art.setTranslationZ(dp(34) * e);   // its glow comes up as it lands
             art.setTranslationX(cx0 + (cx1 - cx0) * e - tileW / 2f);
             art.setTranslationY(cy0 + (cy1 - cy0) * e - tileH / 2f);
             if (!fired[0] && a.getAnimatedFraction() >= 0.45f) {   // start the app mid-zoom: no added wait
@@ -2061,13 +2222,6 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     private TeamCard teamOf(Tile t) {
         for (TeamCard team : teams) if (team.card.tile == t) return team;
         return null;
-    }
-
-    private String cardsNote() {
-        List<String> names = new ArrayList<>();
-        if (f1Wanted) names.add("F1");
-        for (TeamCard t : teams) names.add(t.spec.name);
-        return names.isEmpty() ? "Add F1 or your teams on the phone page" : TextUtils.join(", ", names) + "  ·  more on the phone page";
     }
 
     /** A team's card: the game on now with its score, the last result for the evening after, else the next game. */

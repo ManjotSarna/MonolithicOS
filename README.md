@@ -45,9 +45,11 @@ launcher isn't running your TV in the background anymore.
 
 - **Fast.** The whole thing is about 600 KB and uses ~50 MB of RAM. 0% CPU while you're watching something:
   nothing runs in the background, the cards only update while you're on the home screen.
-- **Looks like tvOS.** Apps tilt, lift and glow in their own colour when you land on them, then zoom open.
-  Frosted glass dock and cards, or Floating: everything sits right on the wallpaper and only what you're on
-  gets the glass.
+- **Looks like tvOS.** Apps tilt, lift and glow in their own colour when you land on them, then open out into
+  the dark, lit in their colour. Frosted glass dock and cards, or Floating: everything sits right on the
+  wallpaper and only what you're on gets the glass.
+- **An intro worth pressing Home for.** The MonolithicOS name draws itself together out of black and Home rises
+  in behind it, when the TV comes on and every time you press Home in an app.
 - **No ads, no tracking.** No account either.
 - **Cards for F1 and your teams.** Countdown to the next race or game, live score while it's on, results after.
   Football (Premier League, LaLiga, Serie A, Bundesliga, Ligue 1, MLS...), NFL, NBA, NHL, MLB.
@@ -56,10 +58,12 @@ launcher isn't running your TV in the background anymore.
 - **Phone remote.** Touchpad, type into the TV's search boxes, open apps, switch inputs, change settings.
   Android app included.
 - **Settings on the TV.** Ad blocking for the whole TV, dim the wallpaper or the app icons, night mode,
-  animation speed, 30 fps mode if your TV's on the slow side, screensaver, all of it.
+  animation speed, 30 fps mode if your TV's on the slow side, all of it. The screensaver is MonolithicOS's own:
+  a big thin clock over your wallpaper.
 - **Inputs in a dropdown** by the clock, the weather, and a Now Playing card that takes you straight back
   into what you paused.
-- **4 OLED wallpapers** built in, or send your own photos from your phone.
+- **4 OLED wallpapers** built in, the Aurora (soft lights in the colour of the app you're on), or send your own
+  photos from your phone.
 - **Optional debloat.** Turns off Google's ad services, TCL's junk and the preinstalled freebie apps (Tubi,
   Pluto and co).
 - **Nothing permanent.** No root. The uninstaller puts your TV back to stock in about 10 seconds.
