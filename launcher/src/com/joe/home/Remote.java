@@ -725,7 +725,7 @@ final class Remote {
         }
 
         j.append(",\"settings\":{\"photo\":").append(prefs.getBoolean("photo", true))
-                .append(",\"dim\":").append(prefs.getInt("dim", 20))
+                .append(",\"dim\":").append(prefs.getInt("dim", 0))
                 .append(",\"night\":").append(prefs.getBoolean("night", true))
                 .append(",\"clock24\":").append(prefs.getBoolean("clock24", false))
                 .append(",\"cards_on\":").append(prefs.getBoolean("cards_on", true))

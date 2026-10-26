@@ -269,7 +269,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         else registerReceiver(packages, f);
         if (tvInputs != null) tvInputs.registerCallback(inputCallback, handler);
         initSessions();
-        int dim = prefs.getInt("dim", 20);
+        int dim = prefs.getInt("dim", 0);
         if (dim % 10 != 0) prefs.edit().putInt("dim", Math.round(dim / 10f) * 10).apply();   // the old 15/45 steps
         Remote.start(this);
         F1.load(prefs, handler, d -> {
@@ -860,7 +860,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         String[] dims = new String[11];   // Off, 10% ... 100% (black)
         for (int i = 0; i < dims.length; i++) dims[i] = i == 0 ? "Off" : i * 10 + "%";
         out.add(new Choice("Dim wallpaper", false, dims,
-                () -> Math.max(0, Math.min(10, Math.round(prefs.getInt("dim", 20) / 10f))),
+                () -> Math.max(0, Math.min(10, Math.round(prefs.getInt("dim", 0) / 10f))),
                 i -> prefs.edit().putInt("dim", i * 10).apply()).scale());
         File shown = Wallpapers.current(this);
         if (shown != null) {
@@ -1372,7 +1372,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
 
     /** Wallpaper dim, and after 10 pm night mode: everything a bit darker and warmer. */
     private void applyTone() {
-        float dim = backdrop.hasPhoto() ? prefs.getInt("dim", 20) / 100f : 0f;
+        float dim = backdrop.hasPhoto() ? prefs.getInt("dim", 0) / 100f : 0f;
         boolean night = nightNow();
         backdrop.setTone((1f - dim) * (night ? 0.62f : 1f), night);
         float[] t = backdrop.tone();
@@ -1382,7 +1382,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
 
     /** Falling snow over wallpapers that have it on, while Home is on screen. */
     private void updateSnow() {
-        boolean on = backdrop.hasPhoto() && prefs.getInt("dim", 20) < 100 && Snow.on(prefs, Wallpapers.current(this));
+        boolean on = backdrop.hasPhoto() && prefs.getInt("dim", 0) < 100 && Snow.on(prefs, Wallpapers.current(this));
         snow.setVisibility(on ? View.VISIBLE : View.GONE);
         snow.setFalling(on && resumed);
     }

@@ -20,8 +20,8 @@ import java.io.File;
 import java.util.Random;
 
 /**
- * MonolithicOS Ambient, the screensaver: a big thin clock over either Home's wallpaper (the GT3 RS
- * unless another is picked) drifting in a slow Ken Burns pan (with its falling snow, if it has it), or (aurora mode) the aurora
+ * MonolithicOS Ambient, the screensaver: a big thin clock over either Home's wallpaper drifting in a
+ * slow Ken Burns pan (with its falling snow, if it has it), or (aurora mode) the aurora
  * changing colour every 15 s. The clock sits top-left and eases to a nearby spot every minute.
  */
 public final class AmbientDream extends DreamService {
@@ -88,7 +88,7 @@ public final class AmbientDream extends DreamService {
         date.setPadding(dp(6), dp(4), 0, 0);
         clock.addView(time);
         clock.addView(date);
-        // top-left: over the photo's dark sky, clear of the car
+        // top-left, where wallpapers tend to be quiet
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
         cl.leftMargin = dp(72);

@@ -16,8 +16,8 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Home-screen wallpapers: MonolithicOS's own (the GT3 RS in the snow), photos sent from the phone page
- * (the app's own files/wallpapers) and any in Pictures/Wallpapers on the TV. Loading makes two bitmaps: the
+ * Home-screen wallpapers: MonolithicOS's own four (OLED black: Horizon, Slab, Eclipse, Wordmark), photos
+ * sent from the phone page (the app's own files/wallpapers) and any in Pictures/Wallpapers on the TV. Loading makes two bitmaps: the
  * photo cropped to the screen as a GPU-only HARDWARE bitmap, and the small frosted copy for the glass.
  */
 final class Wallpapers {
@@ -36,32 +36,46 @@ final class Wallpapers {
         return d;
     }
 
+    // MonolithicOS's own wallpapers, in the order they're offered: OLED black, Horizon first (the default)
+    private static final int[] BUILTIN = {R.raw.wp_horizon, R.raw.wp_slab, R.raw.wp_eclipse, R.raw.wp_wordmark};
+    private static final String[] BUILTIN_NAMES = {"Horizon.jpg", "Slab.jpg", "Eclipse.jpg", "Wordmark.png"};
+
     /** MonolithicOS's own wallpapers, unpacked from the app on first use (so they load like any photo). */
-    private static File builtin(Context c) {
+    private static List<File> builtin(Context c) {
         File d = new File(c.getFilesDir(), "builtin");
-        File f = new File(d, "GT3 RS Snow.jpg");   // "snow" in the name: it snows on it by default
-        if (!f.exists() && (d.isDirectory() || d.mkdirs())) {
-            try (java.io.InputStream in = c.getResources().openRawResource(R.raw.gt3rs_snow);
-                 java.io.FileOutputStream out = new java.io.FileOutputStream(f)) {
-                byte[] buf = new byte[65536];
-                for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
-            } catch (Exception e) {
-                f.delete();
+        List<File> out = new ArrayList<>();
+        if (!d.isDirectory() && !d.mkdirs()) return out;
+        List<String> names = Arrays.asList(BUILTIN_NAMES);
+        File[] old = d.listFiles();
+        if (old != null) for (File f : old) if (!names.contains(f.getName())) f.delete();   // from an older version
+        for (int i = 0; i < BUILTIN.length; i++) {
+            File f = new File(d, BUILTIN_NAMES[i]);
+            if (!f.exists()) {
+                try (java.io.InputStream in = c.getResources().openRawResource(BUILTIN[i]);
+                     java.io.FileOutputStream o = new java.io.FileOutputStream(f)) {
+                    byte[] buf = new byte[65536];
+                    for (int n; (n = in.read(buf)) > 0; ) o.write(buf, 0, n);
+                } catch (Exception e) {
+                    f.delete();
+                    continue;
+                }
             }
+            out.add(f);
         }
-        return d;
+        return out;
     }
 
     /** Every usable photo: newest uploads first, then the shared Pictures/Wallpapers folder, then ours. */
     static List<File> list(Context c) {
         List<File> out = new ArrayList<>();
         for (File dir : new File[]{uploads(c),
-                new File(Environment.getExternalStorageDirectory(), "Pictures/Wallpapers"), builtin(c)}) {
+                new File(Environment.getExternalStorageDirectory(), "Pictures/Wallpapers")}) {
             File[] fs = dir.listFiles((d, n) -> n.matches("(?i).+\\.(jpe?g|png|webp)"));
             if (fs == null) continue;
             Arrays.sort(fs, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
             for (File f : fs) if (f.canRead()) out.add(f);
         }
+        out.addAll(builtin(c));
         return out;
     }
 
