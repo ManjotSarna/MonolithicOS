@@ -4,6 +4,7 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Outline;
@@ -49,10 +50,14 @@ final class Tile extends FrameLayout {
     TextView label;          // optional name under the card, shown on focus
     FocusListener listener;
 
+    // MonolithicOS Settings > App icons: how much unfocused app cards are darkened, 0..1 (glare on black)
+    static float dim;
+
     private final View sheen;
     private final LayerDrawable shine;
     private final float scale, lift;
-    private ValueAnimator shineAnim, wobble;
+    private ValueAnimator shineAnim, wobble, shadeAnim;
+    private float shade = -1f;   // darkening drawn over the card now; -1 = at rest, follow dim
     private boolean moving;
 
     Tile(Context c, int w, int h, float radius, float scale, String title, String subtitle, int accent, int accent2) {
@@ -121,6 +126,36 @@ final class Tile extends FrameLayout {
         @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
 
+    /** The darkening over an app card (not on the focused one), above the art and under the gloss. */
+    @Override
+    protected void dispatchDraw(Canvas c) {
+        super.dispatchDraw(c);
+        float s = shade >= 0 ? shade : rest();
+        if (s > 0.004f) c.drawColor(Color.argb(Math.round(255 * s), 0, 0, 0));
+    }
+
+    private float rest() {
+        return pkg != null && !hasFocus() ? dim : 0f;
+    }
+
+    /** Fade the darkening to where it belongs now: none while focused, {@link #dim} otherwise. */
+    void settleShade() {
+        float to = rest(), from = shade >= 0 ? shade : to;
+        if (shadeAnim != null) shadeAnim.cancel();
+        if (Math.abs(from - to) < 0.004f) {
+            shade = -1f;
+            invalidate();
+            return;
+        }
+        shadeAnim = ValueAnimator.ofFloat(from, to);
+        shadeAnim.setDuration(to < from ? 180 : 320);
+        shadeAnim.addUpdateListener(a -> {
+            shade = a.getAnimatedFraction() >= 1f ? -1f : (float) a.getAnimatedValue();
+            invalidate();
+        });
+        shadeAnim.start();
+    }
+
     /** OK goes down: the card dips, like pressing glass. */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent e) {
@@ -173,6 +208,7 @@ final class Tile extends FrameLayout {
                     .setInterpolator(SETTLE).setDuration(200).start();
         }
         fadeShine(gained ? 255 : 0, gained ? 260 : 160);
+        settleShade();
         if (label != null) {
             label.animate().cancel();
             label.animate().alpha(gained ? 1f : 0f).translationY(gained ? 0f : -label.getTextSize() * 0.25f)

@@ -22,7 +22,8 @@ a clock, nothing else, and it's quick.
   Football (Premier League, LaLiga, Serie A, Bundesliga, Ligue 1, MLS...), NFL, NBA, NHL, MLB.
 - **Phone remote.** Touchpad, type into the TV's search boxes, open apps, switch inputs, change settings.
   Android app included.
-- **Settings on the TV.** Ad blocking for the whole TV, animation speed, night mode, screensaver, all of it.
+- **Settings on the TV.** Ad blocking for the whole TV, animation speed, app icon brightness, night mode,
+  screensaver, all of it.
 - **Inputs in a dropdown** by the clock, plus a Now Playing card and the weather.
 - **4 OLED wallpapers** built in, or send your own photos from your phone.
 - **Optional debloat.** Turns off the TCL/Google junk and the preinstalled freebie apps.

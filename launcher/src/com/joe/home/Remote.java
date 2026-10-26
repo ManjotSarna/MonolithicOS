@@ -635,6 +635,10 @@ final class Remote {
                 prefs.edit().putBoolean(Snow.key(w), on).apply();
                 return null;
             }
+            case "icons":   // app icon brightness, %
+                try { prefs.edit().putInt("icons", Math.max(30, Math.min(100, Integer.parseInt(v)))).apply(); }
+                catch (NumberFormatException e) { return "bad value"; }
+                return null;
             case "dim":
                 try { prefs.edit().putInt("dim", Math.max(0, Math.min(100, Integer.parseInt(v)))).apply(); }
                 catch (NumberFormatException e) { return "bad value"; }
@@ -726,6 +730,7 @@ final class Remote {
 
         j.append(",\"settings\":{\"photo\":").append(prefs.getBoolean("photo", true))
                 .append(",\"dim\":").append(prefs.getInt("dim", 0))
+                .append(",\"icons\":").append(prefs.getInt("icons", 100))
                 .append(",\"night\":").append(prefs.getBoolean("night", true))
                 .append(",\"clock24\":").append(prefs.getBoolean("clock24", false))
                 .append(",\"cards_on\":").append(prefs.getBoolean("cards_on", true))

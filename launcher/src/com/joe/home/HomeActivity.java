@@ -269,6 +269,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         else registerReceiver(packages, f);
         if (tvInputs != null) tvInputs.registerCallback(inputCallback, handler);
         initSessions();
+        Tile.dim = 1f - prefs.getInt("icons", 100) / 100f;
         int dim = prefs.getInt("dim", 0);
         if (dim % 10 != 0) prefs.edit().putInt("dim", Math.round(dim / 10f) * 10).apply();   // the old 15/45 steps
         Remote.start(this);
@@ -862,6 +863,12 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         out.add(new Choice("Dim wallpaper", false, dims,
                 () -> Math.max(0, Math.min(10, Math.round(prefs.getInt("dim", 0) / 10f))),
                 i -> prefs.edit().putInt("dim", i * 10).apply()).scale());
+        String[] bright = new String[8];   // 30% ... 100%
+        for (int i = 0; i < bright.length; i++) bright[i] = (30 + 10 * i) + "%";
+        out.add(new Choice("App icons", false, bright,
+                () -> Math.max(0, Math.min(7, Math.round((prefs.getInt("icons", 100) - 30) / 10f))),
+                i -> prefs.edit().putInt("icons", 30 + 10 * i).apply()).scale()
+                .note(() -> "Brightness; the app you're on stays full"));
         File shown = Wallpapers.current(this);
         if (shown != null) {
             out.add(new Choice("Falling snow", false, new String[]{"On", "Off"},
@@ -1274,6 +1281,10 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         switch (key) {
             case "photo": case "wallpaper": applyLook(); break;
             case "dim": applyTone(); updateSnow(); break;
+            case "icons":
+                Tile.dim = 1f - prefs.getInt("icons", 100) / 100f;
+                for (Tile t : rowOf.keySet()) t.settleShade();
+                break;
             case "night": applyTone(); break;
             case "clock24":
                 applyClock();
