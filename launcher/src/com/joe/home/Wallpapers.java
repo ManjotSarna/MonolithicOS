@@ -91,17 +91,42 @@ final class Wallpapers {
     }
 
     /** Off the main thread. Null if the file can't be read. */
-    static Loaded load(File f, int screenW, int screenH) {
+    // Horizon's glow follows the day: night (the file itself), dawn, day, dusk
+    private static final int[] HORIZON_TIMES = {R.raw.wp_horizon, R.raw.wp_horizon_dawn, R.raw.wp_horizon_day, R.raw.wp_horizon_dusk};
+
+    /** Which Horizon: 0 night (8 pm to 5 am), 1 dawn (5 to 9), 2 day (9 to 5 pm), 3 dusk (5 to 8 pm). */
+    static int period() {
+        int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        return h >= 5 && h < 9 ? 1 : h >= 9 && h < 17 ? 2 : h >= 17 && h < 20 ? 3 : 0;
+    }
+
+    /** Our own Horizon, whose glow changes through the day. */
+    static boolean timeOfDay(File f) {
+        return f != null && "Horizon.jpg".equals(f.getName()) && f.getParentFile() != null
+                && "builtin".equals(f.getParentFile().getName());
+    }
+
+    /** The photo as decoded, Horizon in the colour of the hour. */
+    static Bitmap decode(Context c, File f, BitmapFactory.Options o) {
+        if (!timeOfDay(f)) return BitmapFactory.decodeFile(f.getPath(), o);
+        try (java.io.InputStream in = c.getResources().openRawResource(HORIZON_TIMES[period()])) {
+            return BitmapFactory.decodeStream(in, null, o);
+        } catch (java.io.IOException e) {
+            return null;
+        }
+    }
+
+    static Loaded load(Context c, File f, int screenW, int screenH) {
         try {
             BitmapFactory.Options o = new BitmapFactory.Options();
             o.inJustDecodeBounds = true;
-            BitmapFactory.decodeFile(f.getPath(), o);
+            decode(c, f, o);
             if (o.outWidth <= 0) return null;
             int sample = 1;
             while (o.outWidth / (sample * 2) >= screenW && o.outHeight / (sample * 2) >= screenH) sample *= 2;
             o = new BitmapFactory.Options();
             o.inSampleSize = sample;
-            Bitmap raw = BitmapFactory.decodeFile(f.getPath(), o);
+            Bitmap raw = decode(c, f, o);
             if (raw == null) return null;
 
             // centre-crop to exactly the screen

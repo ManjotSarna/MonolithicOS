@@ -21,7 +21,7 @@ import java.util.Random;
 
 /**
  * MonolithicOS Ambient, the screensaver: a big thin clock over either Home's wallpaper drifting in a
- * slow Ken Burns pan (with its falling snow, if it has it), or (aurora mode) the aurora
+ * slow Ken Burns pan (with snow or rain, as Weather effects says), or (aurora mode) the aurora
  * changing colour every 15 s. The clock sits top-left and eases to a nearby spot every minute.
  */
 public final class AmbientDream extends DreamService {
@@ -56,8 +56,10 @@ public final class AmbientDream extends DreamService {
             photoView.setImageBitmap(photo);
             root.addView(photoView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT));
-            if (Snow.on(getSharedPreferences("home", MODE_PRIVATE), Wallpapers.current(this))) {
-                snow = new Snow(this);   // over the drifting photo, not drifting with it
+            int fx = Snow.effect(getSharedPreferences("home", MODE_PRIVATE));
+            if (fx != Snow.NONE) {
+                snow = new Snow(this);   // the weather, over the drifting photo, not drifting with it
+                snow.setMode(fx);
                 root.addView(snow, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT));
             }
@@ -153,12 +155,12 @@ public final class AmbientDream extends DreamService {
             if (file == null) return null;
             BitmapFactory.Options o = new BitmapFactory.Options();
             o.inJustDecodeBounds = true;
-            BitmapFactory.decodeFile(file.getPath(), o);
+            Wallpapers.decode(this, file, o);   // Horizon in the colour of the hour, like Home
             int sample = 1;
             while (o.outWidth / (sample * 2) >= 1920) sample *= 2;
             o = new BitmapFactory.Options();
             o.inSampleSize = sample;
-            Bitmap b = BitmapFactory.decodeFile(file.getPath(), o);
+            Bitmap b = Wallpapers.decode(this, file, o);
             if (b == null) return null;
             Bitmap gpu = b.copy(Bitmap.Config.HARDWARE, false);   // one GPU copy, nothing in RAM
             b.recycle();

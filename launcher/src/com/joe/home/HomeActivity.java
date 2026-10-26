@@ -3,6 +3,7 @@ package com.joe.home;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.ActivityOptions;
+import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -16,6 +17,10 @@ import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
+import android.graphics.BitmapShader;
+import android.graphics.Matrix;
+import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Outline;
@@ -52,6 +57,8 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
+import android.view.ViewParent;
+import android.view.WindowManager;
 import android.view.ViewTreeObserver;
 import android.view.animation.Interpolator;
 import android.view.animation.PathInterpolator;
@@ -131,15 +138,17 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     private TextClock clock;
     // HDMI inputs: a glass pill left of the clock that drops down the list
     private Tile inputsPill;
+    private ImageView appsHint;   // the v after "Apps"
     private TextView inputsLabel;
     private String inputsSummary = "";
     // wallpaper + Liquid Glass
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private int screenW, screenH;
     private Bitmap frost;
-    private int lookTries;
+    private int lookTries, lookPeriod = -1;
     private boolean loading;   // a wallpaper decode is under way
     private final List<View> glassViews = new ArrayList<>();   // views with a Glass background
+    private final List<Tile> floaters = new ArrayList<>();  // the cards, the pill, Now Playing: text on the wallpaper
     // Now Playing
     private Tile nowCard;
     private ImageView nowArt;
@@ -181,6 +190,8 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         contentTop = dp(380);   // the dock sits low: the wallpaper gets the screen
 
         prefs = getSharedPreferences("home", MODE_PRIVATE);
+        readStyles();
+        applyFps();
         prefs.registerOnSharedPreferenceChangeListener(prefsChanged);
         String saved = prefs.getString("dock", null);
         dockOrder.addAll(saved != null && !saved.isEmpty() ? Arrays.asList(saved.split(",")) : Arrays.asList(DEFAULT_DOCK));
@@ -269,7 +280,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         else registerReceiver(packages, f);
         if (tvInputs != null) tvInputs.registerCallback(inputCallback, handler);
         initSessions();
-        Tile.dim = 1f - prefs.getInt("icons", 100) / 100f;
+        Tile.dim = Tile.iconDim(prefs) / 100f;
         int dim = prefs.getInt("dim", 0);
         if (dim % 10 != 0) prefs.edit().putInt("dim", Math.round(dim / 10f) * 10).apply();   // the old 15/45 steps
         Remote.start(this);
@@ -281,7 +292,9 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         applyCards();
         worker.execute(() -> {   // the F1 logo comes from ESPN like the crests (it's a trademark: not shipped)
             Bitmap logo = F1.logo(this);
-            if (logo != null) handler.post(() -> setLogo(f1, logo, dp(4)));
+            if (logo != null) handler.post(() -> {
+                setLogo(f1, logo, dp(4));
+            });
         });
         checkWatchdog();
     }
@@ -333,6 +346,12 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     protected void onStop() {
         super.onStop();
         clearZoom();   // the app is on screen now; Home is clean when we come back
+        if (resumeOnLeave != null) {   // Now Playing: the video's player is up, now it can play
+            MediaController c = resumeOnLeave;
+            resumeOnLeave = null;
+            handler.removeCallbacks(forgetResume);
+            handler.postDelayed(() -> c.getTransportControls().play(), 250);
+        }
     }
 
     @Override
@@ -413,7 +432,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         rows.clear();
         rowOf.clear();
         dockTiles.clear();
-        glassViews.removeIf(v -> v != nowCard);
+        glassViews.removeIf(v -> !under(v, root));   // what the column held; the pill and cards stay
 
         PackageManager pm = getPackageManager();
         Map<String, ResolveInfo> apps = new LinkedHashMap<>();
@@ -438,7 +457,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         }
         FrameLayout band = new FrameLayout(this);
         // Liquid Glass: the frosted wallpaper behind it (a light smoke keeps white banners crisp), lit rim
-        glass(band, dp(26), 0x29000000, 0x1FFFFFFF);
+        glass(band, dp(26), 0x29000000, 0x1FFFFFFF, Glass.DOCK);
         band.setPadding(bandPad, dp(14), bandPad, dp(14));
         band.setClipChildren(false);
         band.setClipToPadding(false);
@@ -462,7 +481,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         List<Tile> all = new ArrayList<>();
         for (ResolveInfo ri : rest) all.add(appTile(pm, ri, 1.10f));
         all.add(settingsTile());   // MonolithicOS Settings, last, like the Settings app on Apple TV
-        column.addView(section("Apps"));
+        column.addView(appsHead());
         for (int i = 0; i < all.size(); i += COLS) {
             LinearLayout line = row(bandPad);
             List<Tile> tiles = all.subList(i, Math.min(all.size(), i + COLS));
@@ -577,6 +596,9 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         line.setClipChildren(false);
         line.setClipToPadding(false);
         line.setPadding(padLeft, 0, 0, 0);
+        // a row fading in would be drawn through an offscreen buffer its own size, clipping the top of the
+        // focused tile (it grows past the row) for the whole fade; the tiles don't overlap, so no buffer
+        line.forceHasOverlappingRendering(false);
         return line;
     }
 
@@ -584,6 +606,23 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(tileW, ViewGroup.LayoutParams.WRAP_CONTENT);
         if (index > 0) lp.leftMargin = gap;
         return lp;
+    }
+
+    /** "Apps" with a small v after it: everything else is down there. */
+    private View appsHead() {
+        TextView s = section("Apps");
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setLayoutParams(s.getLayoutParams());
+        head.addView(s, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        appsHint = new ImageView(this);
+        appsHint.setImageDrawable(new Chevron(dp(1.6f)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(11), dp(6));
+        lp.leftMargin = dp(9);
+        lp.topMargin = dp(2);
+        head.addView(appsHint, lp);
+        return head;
     }
 
     private TextView section(String name) {
@@ -708,6 +747,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         for (int i = 1; i < rows.size(); i++) {
             rows.get(i).animate().alpha(row >= 1 ? 1f : 0f).setDuration(row >= 1 ? 320 : 200).setInterpolator(glide).start();
         }
+        if (appsHint != null) appsHint.animate().alpha(row >= 1 ? 0f : 1f).setDuration(200).setInterpolator(glide).start();
     }
 
     private void goTop() {
@@ -860,30 +900,38 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         }
         String[] dims = new String[11];   // Off, 10% ... 100% (black)
         for (int i = 0; i < dims.length; i++) dims[i] = i == 0 ? "Off" : i * 10 + "%";
-        out.add(new Choice("Dim wallpaper", false, dims,
+        out.add(new Choice("Dim Wallpaper", false, dims,
                 () -> Math.max(0, Math.min(10, Math.round(prefs.getInt("dim", 0) / 10f))),
                 i -> prefs.edit().putInt("dim", i * 10).apply()).scale());
-        String[] bright = new String[8];   // 30% ... 100%
-        for (int i = 0; i < bright.length; i++) bright[i] = (30 + 10 * i) + "%";
-        out.add(new Choice("App icons", false, bright,
-                () -> Math.max(0, Math.min(7, Math.round((prefs.getInt("icons", 100) - 30) / 10f))),
-                i -> prefs.edit().putInt("icons", 30 + 10 * i).apply()).scale()
-                .note(() -> "Brightness; the app you're on stays full"));
-        File shown = Wallpapers.current(this);
-        if (shown != null) {
-            out.add(new Choice("Falling snow", false, new String[]{"On", "Off"},
-                    () -> Snow.on(prefs, shown) ? 0 : 1,
-                    i -> prefs.edit().putBoolean(Snow.key(shown), i == 0).apply())
-                    .note(() -> "On this wallpaper"));
-        }
-        out.add(new Choice("Night mode", false, new String[]{"Auto", "Off"},
+        out.add(new Choice("Dim App Icons", false, Arrays.copyOf(dims, 8),   // Off ... 70%
+                () -> Math.max(0, Math.min(7, Math.round(Tile.iconDim(prefs) / 10f))),
+                i -> prefs.edit().putInt("icondim", i * 10).apply()).scale());
+        String[] styles = {"Glass", "Floating"}, styleKeys = {"glass", "float"};
+        out.add(new Choice("Frame Rate", false, new String[]{"60 fps", "30 fps"},
+                () -> "30".equals(prefs.getString("fps", "60")) ? 1 : 0,
+                i -> prefs.edit().putString("fps", i == 1 ? "30" : "60").apply())
+                .note(() -> "30 fps: half the work for the TV, a little less smooth"));
+        out.add(new Choice("Dock Style", false, styles,
+                () -> "float".equals(prefs.getString("dockstyle", "glass")) ? 1 : 0,
+                i -> prefs.edit().putString("dockstyle", styleKeys[i]).apply())
+                .note(() -> "Floating: your apps sit right on the wallpaper"));
+        out.add(new Choice("Card Style", false, styles,
+                () -> "float".equals(prefs.getString("cardstyle", "glass")) ? 1 : 0,
+                i -> prefs.edit().putString("cardstyle", styleKeys[i]).apply())
+                .note(() -> "Floating: only the card you're on gets glass"));
+        String[] fxKeys = {"live", "snow", "rain", "off"};
+        out.add(new Choice("Weather Effects", false, new String[]{"Live", "Snow", "Rain", "Off"},
+                () -> Math.max(0, Arrays.asList(fxKeys).indexOf(prefs.getString("fx", "live"))),
+                i -> prefs.edit().putString("fx", fxKeys[i]).apply())
+                .note(() -> "Live: snow or rain when it's snowing or raining outside"));
+        out.add(new Choice("Night Mode", false, new String[]{"Auto", "Off"},
                 () -> prefs.getBoolean("night", true) ? 0 : 1,
                 i -> prefs.edit().putBoolean("night", i == 0).apply())
                 .note(() -> "Darker and warmer, 10 pm to 6 am"));
         out.add(new Choice("Clock", false, new String[]{"12-hour", "24-hour"},
                 () -> prefs.getBoolean("clock24", false) ? 1 : 0,
                 i -> prefs.edit().putBoolean("clock24", i == 1).apply()));
-        out.add(new Choice("Ad blocking", true, new String[]{"On", "Off"},
+        out.add(new Choice("Ad Blocking", true, new String[]{"On", "Off"},
                 () -> Tweaks.adblock(this) ? 0 : 1, i -> Tweaks.setAdblock(this, i == 0))
                 .note(() -> "AdGuard DNS for the whole TV"));
         out.add(new Choice("Animations", true, new String[]{"Fast", "Normal"},
@@ -894,7 +942,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
                 () -> prefs.getBoolean("cards_on", true) ? 0 : 1,
                 i -> prefs.edit().putBoolean("cards_on", i == 0).apply())
                 .note(this::cardsNote));
-        out.add(new Choice("Phone remote", false, new String[]{"On", "Off"},
+        out.add(new Choice("Phone Remote", false, new String[]{"On", "Off"},
                 () -> prefs.getBoolean("remote", true) ? 0 : 1, i -> setRemote(i == 0))
                 .note(() -> prefs.getBoolean("remote", true)
                         ? Remote.address() + "  ·  PIN " + Remote.pin(this) : "Phone page and keyboard off"));
@@ -931,7 +979,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         List<Runnable> refresh = new ArrayList<>();
         for (Choice c : choices()) items.add(choiceRow(c, refresh));
         if (watch != null && watch.bad()) {   // first thing in the list while the warning is up
-            TextView ignore = menuItem("Ignore the update warning");
+            TextView ignore = menuItem("Ignore the Update Warning");
             ignore.setOnClickListener(v -> {
                 closeMenu(true);
                 worker.execute(() -> {
@@ -941,7 +989,10 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             });
             items.add(0, ignore);
         }
-        TextView pin = menuItem("New phone PIN");
+        TextView android = menuItem("Android Settings");   // the TV's own: network, picture, sound
+        android.setOnClickListener(v -> { closeMenu(false); start(new Intent(Settings.ACTION_SETTINGS)); });
+        items.add(android);
+        TextView pin = menuItem("New Phone PIN");
         pin.setOnClickListener(v -> {
             Remote.newPin(this);
             for (Runnable r : refresh) r.run();
@@ -954,7 +1005,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         for (int i = 0; i < items.size(); i++) {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = i == 0 ? 0 : dp(i == items.size() - 2 || (i == 1 && watch != null && watch.bad()) ? 18 : 4);
+            lp.topMargin = i == 0 ? 0 : dp(i == items.size() - 3 || (i == 1 && watch != null && watch.bad()) ? 18 : 4);
             list.addView(items.get(i), lp);
         }
         scroll.addView(list);
@@ -1277,8 +1328,9 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         switch (key) {
             case "photo": case "wallpaper": applyLook(); break;
             case "dim": applyTone(); updateSnow(); break;
-            case "icons":
-                Tile.dim = 1f - prefs.getInt("icons", 100) / 100f;
+            case "dockstyle": case "cardstyle": applyStyles(); break;
+            case "icondim":
+                Tile.dim = Tile.iconDim(prefs) / 100f;
                 for (Tile t : rowOf.keySet()) t.settleShade();
                 break;
             case "night": applyTone(); break;
@@ -1288,6 +1340,8 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
                 for (TeamCard t : teams) t.update();
                 break;
             case "cards": case "cards_on": applyCards(); break;
+            case "fx": case "wcode": updateSnow(); break;
+            case "fps": applyFps(); break;
             case "dock":   // set from the phone page (our own Move/Add/Remove write it too, then rebuild themselves)
                 List<String> order = Arrays.asList(prefs.getString("dock", "").split(","));
                 if (!order.equals(dockOrder)) {
@@ -1300,7 +1354,6 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             case "city": weatherAt = 0; refreshWeather(); break;
             default:
                 if (key.startsWith("name:")) rebuildSoon();
-                else if (key.startsWith("snow:")) updateSnow();
         }
     };
 
@@ -1324,7 +1377,9 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         }
         loading = true;
         worker.execute(() -> {
-            Wallpapers.Loaded l = Wallpapers.load(chosen, screenW, screenH);
+            int period = Wallpapers.period();
+            Wallpapers.Loaded l = Wallpapers.load(this, chosen, screenW, screenH);
+            lookPeriod = period;
             handler.post(() -> {
                 loading = false;
                 if (isDestroyed()) return;
@@ -1346,7 +1401,12 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
      * Cards that lift on focus need an opaque veilAlone: through see-through glass their own shadow shows.
      */
     private void glass(View v, float r, int veilOverFrost, int veilAlone) {
+        glass(v, r, veilOverFrost, veilAlone, Glass.ALWAYS);
+    }
+
+    private void glass(View v, float r, int veilOverFrost, int veilAlone, int role) {
         Glass g = new Glass(r, density, veilOverFrost, veilAlone);
+        g.role = role;
         float[] t = backdrop.tone();
         g.setTone(t[0], t[1], t[2]);
         g.setFrost(frost, screenW, screenH);
@@ -1387,9 +1447,11 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         snow.setTone(t[0], t[1], t[2]);
     }
 
-    /** Falling snow over wallpapers that have it on, while Home is on screen. */
+    /** Snow or rain (Weather effects), while Home is on screen; none over a fully dimmed wallpaper. */
     private void updateSnow() {
-        boolean on = backdrop.hasPhoto() && prefs.getInt("dim", 0) < 100 && Snow.on(prefs, Wallpapers.current(this));
+        int fx = Snow.effect(prefs);
+        boolean on = fx != Snow.NONE && !(backdrop.hasPhoto() && prefs.getInt("dim", 0) >= 100);
+        snow.setMode(fx);
         snow.setVisibility(on ? View.VISIBLE : View.GONE);
         snow.setFalling(on && resumed);
     }
@@ -1398,9 +1460,51 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         @Override public void run() {
             applyTone();
             greeting.setText(greetingText());
+            // Horizon changes colour at dawn, day, dusk and night
+            if (!loading && Wallpapers.timeOfDay(Wallpapers.current(HomeActivity.this)) && Wallpapers.period() != lookPeriod) {
+                applyLook();
+            }
             handler.postDelayed(this, 5 * 60_000L);
         }
     };
+
+    private static boolean under(View v, View top) {
+        for (ViewParent p = v.getParent(); p != null; p = p.getParent()) if (p == top) return true;
+        return false;
+    }
+
+    /** Dock Style and Card Style: Glass, or Floating (straight on the wallpaper, glass only on focus). */
+    /**
+     * Frame Rate: 30 fps asks for half the frames. The panel only has its 60 Hz mode, so nothing switches
+     * (no blank screen); SurfaceFlinger's frame rate override paces just this app at 30. Half the GPU work
+     * while anything moves.
+     */
+    private void applyFps() {
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.preferredRefreshRate = "30".equals(prefs.getString("fps", "60")) ? 30f : 0f;
+        getWindow().setAttributes(lp);
+    }
+
+    private void readStyles() {
+        Glass.floatDock = "float".equals(prefs.getString("dockstyle", "glass"));
+        Glass.floatCards = "float".equals(prefs.getString("cardstyle", "glass"));
+    }
+
+    private void applyStyles() {
+        readStyles();
+        for (Tile t : floaters) floating(t);
+        for (View v : glassViews) {
+            v.invalidate();
+            v.invalidateOutline();
+        }
+    }
+
+    /** A card's text: floating, it sits on the wallpaper and gets the soft shadow (only then, and only at rest). */
+    private void floating(Tile t) {
+        if (!floaters.contains(t)) floaters.add(t);
+        t.shadowText = Glass.floatCards;
+        t.textShadows();
+    }
 
     /** A soft shadow under text that sits on the wallpaper, so it reads over snow or sky. */
     private <T extends TextView> T legible(T v) {
@@ -1422,10 +1526,11 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             });
             return;
         }
-        Weather.fetch(prefs.getString("lat", ""), prefs.getString("lon", ""), handler, s -> {
+        Weather.fetch(prefs.getString("lat", ""), prefs.getString("lon", ""), handler, (s, code) -> {
             String text = s + " · " + city;
             weather.setText(text);
-            prefs.edit().putString("weather", text).apply();
+            // the code drives Weather effects > Live: snow or rain when it's snowing or raining out there
+            prefs.edit().putString("weather", text).putLong("wcodeAt", System.currentTimeMillis()).putInt("wcode", code).apply();
         });
     }
 
@@ -1435,19 +1540,12 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     private void buildNowCard() {
         int w = dp(300), h = dp(84);
         nowCard = new Tile(this, w, h, dp(18), 1.05f, "Now Playing", null, NEUTRAL, NEUTRAL2);
-        glass(nowCard, dp(18), 0x40101014, 0xFF26262A);   // smokier: white text on it
+        glass(nowCard, dp(18), 0x40101014, 0xFF26262A, Glass.CARD);   // smokier: white text on it
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(10), dp(10), dp(14), dp(10));
-        nowArt = new ImageView(this);
-        nowArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        nowArt.setOutlineProvider(new ViewOutlineProvider() {
-            @Override public void getOutline(View v, Outline o) {
-                o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), dp(10));
-            }
-        });
-        nowArt.setClipToOutline(true);
+        nowArt = new ImageView(this);   // the art comes in already cut to size and rounded (thumb)
         row.addView(nowArt, new LinearLayout.LayoutParams(dp(64), dp(64)));
         LinearLayout words = new LinearLayout(this);
         words.setOrientation(LinearLayout.VERTICAL);
@@ -1465,6 +1563,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         words.addView(nowState);
         row.addView(words, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         nowCard.addView(row, 0, match());
+        floating(nowCard);
         nowCard.setId(View.generateViewId());
         nowCard.setNextFocusLeftId(nowCard.getId());
         nowCard.setNextFocusRightId(nowCard.getId());
@@ -1613,7 +1712,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         if (art == null) art = md.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
         if (art != nowBitmap) {
             nowBitmap = art;
-            nowArt.setImageBitmap(art);
+            nowArt.setImageBitmap(art != null ? thumb(art, dp(64), dp(10)) : null);
             int[] p = art != null ? palette("np:" + track + "/" + artist, new BitmapDrawable(getResources(), art))
                     : new int[]{NEUTRAL, NEUTRAL2};
             nowCard.accent = p[0];
@@ -1631,11 +1730,63 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         }
     }
 
+    // music plays and pauses right on the card; anything else is a video, and OK takes you back to it
+    private static final Set<String> MUSIC = new HashSet<>(Arrays.asList("com.spotify.tv.android",
+            "com.google.android.youtube.tvmusic", "com.apple.android.music", "com.aspiro.tidal",
+            "deezer.android.tv", "com.amazon.music.tv", "com.pandora.android.atv", "com.soundcloud.android",
+            "tunein.player", "com.audible.application", "au.com.shiftyjelly.pocketcasts"));
+    private MediaController resumeOnLeave;   // a paused video to play once its player is on screen
+    private final Runnable forgetResume = () -> resumeOnLeave = null;
+
     private void togglePlay() {
         if (playing == null) return;
         PlaybackState s = playing.getPlaybackState();
-        if (s != null && s.getState() == PlaybackState.STATE_PLAYING) playing.getTransportControls().pause();
-        else playing.getTransportControls().play();
+        boolean on = s != null && s.getState() == PlaybackState.STATE_PLAYING;
+        String pkg = playing.getPackageName();
+        if (MUSIC.contains(pkg)) {
+            if (on) playing.getTransportControls().pause();
+            else playing.getTransportControls().play();
+            return;
+        }
+        // a video: its player first, then play once it's in front (onStop). Playing straight away started
+        // the sound here while Stremio took ~5 s to bring the picture up on its own.
+        if (!on) {
+            resumeOnLeave = playing;
+            handler.removeCallbacks(forgetResume);
+            handler.postDelayed(forgetResume, 4000);   // it never came up: don't start sound behind Home
+        }
+        PendingIntent back = playing.getSessionActivity();   // the app's own way back to the player
+        try {
+            if (back == null) throw new PendingIntent.CanceledException();
+            if (Build.VERSION.SDK_INT >= 34) {
+                back.send(this, 0, null, null, null, null, ActivityOptions.makeBasic()
+                        .setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                        .toBundle());
+            } else {
+                back.send();
+            }
+        } catch (PendingIntent.CanceledException e) {
+            launchPackage(pkg);
+        }
+    }
+
+    /**
+     * Album art cut to the card's square and rounded once: drawn as it came (up to 640 px, clipped to a rounded
+     * outline) it was re-cropped every frame anything moved, and held ~1.6 MB instead of ~64 KB.
+     */
+    private static Bitmap thumb(Bitmap src, int size, float radius) {
+        Bitmap out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        int side = Math.min(src.getWidth(), src.getHeight());
+        Matrix m = new Matrix();
+        m.setScale((float) size / side, (float) size / side);
+        m.preTranslate(-(src.getWidth() - side) / 2f, -(src.getHeight() - side) / 2f);
+        BitmapShader shader = new BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+        shader.setLocalMatrix(m);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        p.setShader(shader);
+        c.drawRoundRect(new RectF(0, 0, size, size), radius, radius, p);
+        return out;
     }
 
     private String appLabel(String pkg) {
@@ -1660,7 +1811,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         Card(String name, int accent, int accent2, Runnable open) {
             int w = dp(300), h = dp(64);
             tile = new Tile(HomeActivity.this, w, h, dp(18), 1.05f, name, null, accent, accent2);
-            glass(tile, dp(18), 0x40101014, 0xFF26262A);
+            glass(tile, dp(18), 0x40101014, 0xFF26262A, Glass.CARD);
             LinearLayout row = new LinearLayout(HomeActivity.this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
@@ -1692,6 +1843,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             count.addView(unit);
             row.addView(count);
             tile.addView(row, 0, match());
+            floating(tile);
             tile.setId(View.generateViewId());
             tile.setNextFocusLeftId(tile.getId());
             tile.setNextFocusRightId(tile.getId());
@@ -1993,6 +2145,13 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             }
         }
 
+        /** A fresh copy in. */
+        void accept(Team.Data d) {
+            if (gone) return;
+            data = d;
+            update();
+        }
+
         /**
          * During a game, its score once a minute. Otherwise everything every 6 hours, and again half an
          * hour after each final whistle for the result and the table; never twice in 30 minutes.
@@ -2005,11 +2164,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
                 if (!on) continue;
                 if (liveAt != 0 && up - liveAt < 55_000L) return;
                 liveAt = up;
-                Team.live(prefs, spec, m, handler, d -> {
-                    if (gone) return;
-                    data = d;
-                    update();
-                });
+                Team.live(prefs, spec, m, handler, this::accept);
                 return;
             }
             if (fetchAt != 0 && up - fetchAt < 30 * 60_000L) return;
@@ -2021,11 +2176,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             }
             if (!due) return;
             fetchAt = up;
-            Team.fetch(prefs, spec, handler, d -> {
-                if (gone) return;
-                data = d;
-                update();
-            });
+            Team.fetch(prefs, spec, handler, this::accept);
         }
 
         /** The opponent, big ("Fleetwood Town v Arsenal" doesn't fit at that size), and the details under it. */
@@ -2225,7 +2376,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     /** The glass pill left of the clock: the connected input's name (else "Inputs"); OK drops the list. */
     private void buildInputsPill() {
         inputsPill = new Tile(this, dp(120), dp(36), dp(18), 1.08f, "Inputs", null, NEUTRAL, NEUTRAL2);
-        glass(inputsPill, dp(18), 0x40101014, 0xFF26262A);
+        glass(inputsPill, dp(18), 0x40101014, 0xFF26262A, Glass.CARD);
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -2243,6 +2394,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         row.addView(more, new LinearLayout.LayoutParams(dp(9), dp(5)));
         inputsPill.addView(row, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
+        floating(inputsPill);
         inputsPill.setId(View.generateViewId());
         inputsPill.setNextFocusLeftId(inputsPill.getId());
         inputsPill.setNextFocusRightId(inputsPill.getId());

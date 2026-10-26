@@ -225,7 +225,7 @@ h2{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
   <section class="tab" id="tab-look" hidden>
     <h2>Wallpaper</h2>
     <div class="strip" id="walls"></div>
-    <h2>Home screen</h2>
+    <h2>Home Screen</h2>
     <div class="card glass" id="homeRows"></div>
     <h2>Cards</h2>
     <div class="card glass" id="cardList"></div>
@@ -410,20 +410,23 @@ document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click
 
 // ---- settings rows ----
 const HOME_ROWS = [
-  { k: "name", label: "Your name", text: "For the greeting" },
-  { k: "city", label: "Weather city", text: "City" },
+  { k: "name", label: "Your Name", text: "For the greeting" },
+  { k: "city", label: "Weather City", text: "City, region" },
   { k: "photo", label: "Background", seg: [["1", "Wallpaper"], ["0", "Aurora"]] },
-  { k: "dim", label: "Dim wallpaper", range: [0, 100, 10] },
-  { k: "icons", label: "App icon brightness", range: [30, 100, 10] },
-  { k: "snow", label: "Falling snow", note: "On this wallpaper" },
-  { k: "night", label: "Night mode", note: "Darker and warmer, 10 pm to 6 am" },
-  { k: "clock24", label: "24-hour clock" },
-  { k: "cards_on", label: "Show cards" },
+  { k: "dim", label: "Dim Wallpaper", range: [0, 100, 10] },
+  { k: "icondim", label: "Dim App Icons", range: [0, 70, 10] },
+  { k: "dockstyle", label: "Dock Style", seg: [["glass", "Glass"], ["float", "Floating"]], note: "Floating: your apps sit right on the wallpaper" },
+  { k: "cardstyle", label: "Card Style", seg: [["glass", "Glass"], ["float", "Floating"]], note: "Floating: only the card you're on gets glass" },
+  { k: "fps", label: "Frame Rate", seg: [["60", "60 fps"], ["30", "30 fps"]], note: "30 fps: half the work for the TV, a little less smooth" },
+  { k: "fx", label: "Weather Effects", seg: [["live", "Live"], ["snow", "Snow"], ["rain", "Rain"], ["off", "Off"]] },
+  { k: "night", label: "Night Mode", note: "Darker and warmer, 10 pm to 6 am" },
+  { k: "clock24", label: "24-Hour Clock" },
+  { k: "cards_on", label: "Show Cards" },
 ];
 const TV_ROWS = [
-  { k: "adblock", label: "Ad blocking", note: "AdGuard DNS for the whole TV" },
-  { k: "fast", label: "Fast animations", note: "Half-length transitions everywhere" },
-  { k: "ambient", label: "MonolithicOS screensaver", note: "Off uses Google TV's own" },
+  { k: "adblock", label: "Ad Blocking", note: "AdGuard DNS for the whole TV" },
+  { k: "fast", label: "Fast Animations", note: "Half-length transitions everywhere" },
+  { k: "ambient", label: "MonolithicOS Screensaver", note: "Off uses Google TV's own" },
 ];
 function buildRows(el, rows, sys) {
   el.innerHTML = "";
@@ -620,7 +623,8 @@ function render(s) {
   }
 
   const st = s.settings;
-  const vals = { photo: st.photo ? "1" : "0", dim: String(st.dim) };
+  const vals = { photo: st.photo ? "1" : "0", dim: String(st.dim), fx: st.fx || "live",
+    dockstyle: st.dockstyle || "glass", cardstyle: st.cardstyle || "glass", fps: st.fps || "60" };
   document.querySelectorAll(".set").forEach(row => {
     const k = row.dataset.k, sw = row.querySelector(".sw");
     if (sw) sw.classList.toggle("on", !!st[k]);
@@ -632,7 +636,7 @@ function render(s) {
   });
   document.querySelectorAll("#tvRows .set").forEach(r => r.classList.toggle("off", !s.allowed));
   renderCards(s.cards || []);
-  document.querySelectorAll('.set[data-k="dim"], .set[data-k="snow"]').forEach(r => r.classList.toggle("off", !st.photo));
+  document.querySelectorAll('.set[data-k="dim"]').forEach(r => r.classList.toggle("off", !st.photo));
   $("#tvNote").textContent = s.allowed ? "" : "These need a one-time permission: run the MonolithicOS installer from a computer.";
 }
 

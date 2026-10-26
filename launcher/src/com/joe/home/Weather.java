@@ -2,6 +2,7 @@ package com.joe.home;
 
 import android.os.Handler;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
@@ -10,7 +11,7 @@ import org.json.JSONObject;
  * ({@link #locate}). One small HTTPS request; the caller rate-limits it.
  */
 final class Weather {
-    interface Callback { void onWeather(String text); }
+    interface Callback { void onWeather(String text, int code); }
     interface Place { void onPlace(String[] place); }   // {name, latitude, longitude}, or null
 
     private Weather() { }
@@ -18,20 +19,23 @@ final class Weather {
     static void fetch(String lat, String lon, Handler main, Callback cb) {
         new Thread(() -> {
             String text = null;
+            int code = -1;
             try {
                 String json = Team.get("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon
                         + "&current=temperature_2m,weather_code&timezone=auto");
                 if (json != null) {
                     JSONObject now = new JSONObject(json).getJSONObject("current");
                     long t = Math.round(now.getDouble("temperature_2m"));
-                    text = t + "° " + describe(now.getInt("weather_code"));
+                    code = now.getInt("weather_code");
+                    text = t + "° " + describe(code);
                 }
             } catch (Exception ignored) {
                 // offline or the API changed: keep showing the last reading
             }
             if (text != null) {
                 String s = text;
-                main.post(() -> cb.onWeather(s));
+                int c = code;
+                main.post(() -> cb.onWeather(s, c));
             }
         }, "weather").start();
     }
@@ -56,17 +60,40 @@ final class Weather {
     }
 
     /** A city name to a place, with Open-Meteo's geocoder. Blocking: call it off the main thread. */
-    static String[] geocode(String name) {
+    /**
+     * A city by name: the biggest place with that name (Open-Meteo's own order isn't by size: for one name it put
+     * a 10k town 14 places ahead of a 40k city), and "London, Ontario" / "London, ON" / "London, Canada" narrows
+     * it by region (name or initials) or country.
+     */
+    static String[] geocode(String query) {
         try {
-            String json = Team.get("https://geocoding-api.open-meteo.com/v1/search?count=1&name="
-                    + java.net.URLEncoder.encode(name.trim(), "UTF-8"));
+            String[] parts = query.split(",", 2);
+            String name = parts[0].trim(), where = parts.length > 1 ? parts[1].trim().toLowerCase(java.util.Locale.ROOT) : "";
+            String json = Team.get("https://geocoding-api.open-meteo.com/v1/search?count=50&name="
+                    + java.net.URLEncoder.encode(name, "UTF-8"));
             if (json == null) return null;
-            JSONObject r = new JSONObject(json).getJSONArray("results").getJSONObject(0);
-            return new String[]{r.getString("name"), String.valueOf(r.getDouble("latitude")),
-                    String.valueOf(r.getDouble("longitude"))};
+            JSONArray rs = new JSONObject(json).getJSONArray("results");
+            JSONObject pick = null;
+            for (int i = 0; i < rs.length(); i++) {
+                JSONObject r = rs.getJSONObject(i);
+                if (!r.optString("name").equalsIgnoreCase(name) || !(where.isEmpty() || in(r, where))) continue;
+                if (pick == null || r.optLong("population") > pick.optLong("population")) pick = r;
+            }
+            if (pick == null) pick = rs.getJSONObject(0);
+            return new String[]{pick.getString("name"), String.valueOf(pick.getDouble("latitude")),
+                    String.valueOf(pick.getDouble("longitude"))};
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static boolean in(JSONObject r, String where) {
+        String region = r.optString("admin1").toLowerCase(java.util.Locale.ROOT);
+        StringBuilder initials = new StringBuilder();
+        for (String w : region.split(" ")) if (!w.isEmpty()) initials.append(w.charAt(0));
+        return region.startsWith(where) || initials.toString().equals(where)
+                || r.optString("country").toLowerCase(java.util.Locale.ROOT).startsWith(where)
+                || r.optString("country_code").equalsIgnoreCase(where);
     }
 
     /** WMO weather codes, in words. */

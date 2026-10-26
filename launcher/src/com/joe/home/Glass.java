@@ -1,5 +1,6 @@
 package com.joe.home;
 
+import android.animation.ValueAnimator;
 import android.graphics.Bitmap;
 import android.graphics.BitmapShader;
 import android.graphics.Canvas;
@@ -25,6 +26,9 @@ import android.view.View;
  * a surface is two draws, not three: on this GPU every full-surface blend counts. Shaders and
  * drawRoundRect only, no clipPath. Without a wallpaper (aurora mode) it is just the veil and the rim.
  * The view that owns it must invalidate it when it moves on screen.
+ *
+ * Dock Style and Card Style > Floating: the dock band isn't drawn at all, and a card's glass only fades in
+ * while it's the one you're on (a Tile tells it, see {@link #focus}); fewer big blends, so lighter too.
  */
 final class Glass extends Drawable {
     private final Paint body = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -38,6 +42,13 @@ final class Glass extends Drawable {
     private BitmapShader shader;
     private int frostW, frostH, screenW, screenH;
     private float toneR = 1f, toneG = 1f, toneB = 1f;
+
+    static final int ALWAYS = 0, DOCK = 1, CARD = 2;   // what the surface is, for the two styles
+    static boolean floatDock, floatCards;
+    int role = ALWAYS;
+    private float focus;   // 0..1: a floating card's glass, in while it has focus
+    private boolean focused;
+    private ValueAnimator focusAnim;
 
     Glass(float radius, float density, int veilOverFrost, int veilAlone) {
         this.radius = radius;
@@ -85,6 +96,47 @@ final class Glass extends Drawable {
         return new LightingColorFilter(mul, add);
     }
 
+    /** The card got or lost focus: floating, its glass fades in or out. */
+    void focus(boolean on) {
+        if (focusAnim != null) focusAnim.cancel();
+        focused = on;
+        float to = on ? 1f : 0f;
+        if (role != CARD || !floatCards) {
+            focus = to;
+            outline();
+            return;
+        }
+        focusAnim = ValueAnimator.ofFloat(focus, to);
+        focusAnim.setDuration(on ? 220 : 160);
+        focusAnim.addUpdateListener(a -> {
+            focus = (float) a.getAnimatedValue();
+            invalidateSelf();
+            outline();
+        });
+        focusAnim.start();
+    }
+
+    /**
+     * How strongly the card may cast its glow: a lifted card's shadow is drawn under all of it, so through
+     * see-through glass it showed as a red block when a floating F1 card lost focus. So floating, the glow
+     * goes the moment focus leaves, and comes in only over the last quarter of the glass fading in.
+     */
+    float shadow() {
+        if (role != CARD || !floatCards) return 1f;
+        if (!focused) return 0f;
+        float t = Math.max(0f, Math.min(1f, (focus - 0.75f) / 0.25f));
+        return t * t;
+    }
+
+    private void outline() {
+        if (getCallback() instanceof View) ((View) getCallback()).invalidateOutline();
+    }
+
+    private float level() {
+        if (role == DOCK) return floatDock ? 0f : 1f;
+        return role == CARD && floatCards ? focus : 1f;
+    }
+
     @Override
     protected void onBoundsChange(Rect b) {
         // the rim catches light from the top left, like the tvOS material
@@ -95,6 +147,12 @@ final class Glass extends Drawable {
 
     @Override
     public void draw(Canvas c) {
+        float level = level();
+        if (level < 0.004f) return;
+        int a = Math.round(255 * level);
+        body.setAlpha(a);
+        rim.setAlpha(a);
+        veil.setAlpha(Math.round(Color.alpha(veilAlone) * level));
         Rect b = getBounds();
         rect.set(b);
         if (shader != null) {

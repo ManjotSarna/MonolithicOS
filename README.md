@@ -7,41 +7,61 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-black?style=flat-square" alt="MIT"></a>
 </p>
 
-I got tired of the Google TV home screen on my TCL. Ads in every row, stuff I'd never watch, and it felt slow
-on a TV that cost way too much. So I made my own. It's basically what I wish Google TV looked like: your apps,
-a clock, nothing else, and it's quick.
+<h3 align="center">Google TV's home screen is a billboard. This swaps it for your apps and a clock.<br>
+Double-click to install, double-click to undo. 0.6 MB.</h3>
 
-<p align="center"><img src="docs/screenshots/tv-home.jpg" alt="MonolithicOS home screen" width="100%"></p>
+<p align="center">
+  <a href="https://github.com/ManjotSarna/MonolithicOS/releases/latest/download/MonolithicOS.zip"><b>Download</b></a> ·
+  <a href="#install">Install in 3 steps</a> ·
+  <a href="#uninstall">Undo</a>
+</p>
+
+<p align="center"><img src="docs/demo.gif" alt="MonolithicOS on a Google TV" width="100%"></p>
+
+I got tired of the Google TV home screen. Ads in every row, stuff I'd never watch, and it felt slow on a TV that
+cost way too much. So I made my own: your apps, a clock, nothing else, and it's quick. Works on any Google TV or
+Android TV (TCL, Sony, Hisense, Philips, Chromecast with Google TV...).
 
 ## Google TV vs MonolithicOS
 
 | | Google TV home | MonolithicOS |
 |---|---|---|
-| **Size** | 24.5 MB app, **~327 MB** with its data and cache | **0.4 MB** app, **~5 MB** all in |
-| **Memory** | **~135 MB** across two processes | **~37 MB** |
+| **Size** | 24.5 MB app, **~327 MB** with its data and cache | **0.6 MB** app, **~5 MB** all in |
+| **Memory** | **~135 MB** across two processes | **~50 MB** |
 | **Home screen** | Promoted shows, sponsored rows, autoplaying trailers | **Your apps.** That's it |
 | **Ads** | Yes | **None** |
 | **Tracking** | Uses what you watch for recommendations and ads | **None.** No account, no analytics |
 | **Ad & tracker blocking** | Not built in | **The whole TV**, one switch (AdGuard DNS) |
-| **In the background** | Refreshing rows and recommendations | **Nothing** when you're not using it |
+| **While you watch** | Refreshing rows and recommendations | **0% CPU** |
 | **Phone remote** | Needs Google's app and your Google account | **Any phone browser.** No account, stays on your Wi-Fi, PIN-locked |
 
 <sub>Sizes and memory measured on my TCL QM851G (Google TV 14), October 2026.</sub>
 
+**Is it an actual OS?** No, it's a home screen. Android, your apps and the Play Store stay exactly as they
+are. But it doesn't just sit on top of Google's home screen: it switches it off completely, so Google's
+launcher isn't running your TV in the background anymore.
+
 ## What it does
 
-- **Fast.** The whole thing is about 400 KB and uses ~37 MB of RAM. Nothing runs in the background, no rows loading.
-- **Looks like tvOS.** Frosted glass dock, apps tilt and lift when you land on them, they zoom open.
+- **Fast.** The whole thing is about 600 KB and uses ~50 MB of RAM. 0% CPU while you're watching something:
+  nothing runs in the background, the cards only update while you're on the home screen.
+- **Looks like tvOS.** Apps tilt, lift and glow in their own colour when you land on them, then zoom open.
+  Frosted glass dock and cards, or Floating: everything sits right on the wallpaper and only what you're on
+  gets the glass.
 - **No ads, no tracking.** No account either.
 - **Cards for F1 and your teams.** Countdown to the next race or game, live score while it's on, results after.
   Football (Premier League, LaLiga, Serie A, Bundesliga, Ligue 1, MLS...), NFL, NBA, NHL, MLB.
+- **Weather on your wallpaper.** Snowing outside, it snows on the home screen. Raining, it rains. The Horizon
+  wallpaper goes dawn, day, dusk, night with the actual time.
 - **Phone remote.** Touchpad, type into the TV's search boxes, open apps, switch inputs, change settings.
   Android app included.
-- **Settings on the TV.** Ad blocking for the whole TV, animation speed, app icon brightness, night mode,
-  screensaver, all of it.
-- **Inputs in a dropdown** by the clock, plus a Now Playing card and the weather.
+- **Settings on the TV.** Ad blocking for the whole TV, dim the wallpaper or the app icons, night mode,
+  animation speed, 30 fps mode if your TV's on the slow side, screensaver, all of it.
+- **Inputs in a dropdown** by the clock, the weather, and a Now Playing card that takes you straight back
+  into what you paused.
 - **4 OLED wallpapers** built in, or send your own photos from your phone.
-- **Optional debloat.** Turns off the TCL/Google junk and the preinstalled freebie apps.
+- **Optional debloat.** Turns off Google's ad services, TCL's junk and the preinstalled freebie apps (Tubi,
+  Pluto and co).
 - **Nothing permanent.** No root. The uninstaller puts your TV back to stock in about 10 seconds.
 
 <p align="center">
@@ -68,6 +88,8 @@ Linux: `bash files/install.sh install`. The installer grabs Google's ADB tools o
 On Android, tap **Get** up top for the app. That's also where you set your name, city, wallpaper and cards.
 
 ## Screenshots
+
+<p align="center"><img src="docs/screenshots/tv-home.jpg" alt="MonolithicOS home screen" width="100%"></p>
 
 <table>
   <tr>
@@ -99,10 +121,13 @@ On Android, tap **Get** up top for the app. That's also where you set your name,
 
 ## Good to know
 
-- Built and tested on a TCL QM851G (Google TV 14). Should work on most Google TV / Android TV 9+ stuff
-  (Chromecast with Google TV, Sony, Hisense...). Not Fire TV, Roku, Samsung or LG.
+- Runs on Google TV and Android TV 9+ (Chromecast with Google TV, Sony, Hisense, TCL, Philips...). I built
+  and tested it on my TCL QM851G (Google TV 14), so let me know how it goes on yours. Not Fire TV, Roku,
+  Samsung or LG.
 - With Google's home screen off, the remote's YouTube button and voice search for shows don't work.
   YouTube is in the dock; Netflix and Prime buttons work from the home screen.
+- The weather effects can be turned off in MonolithicOS Settings or from your phone. For the right weather,
+  give your city with its region if it shares a name (London, Ontario).
 - If a TV update turns Google's stuff back on, you'll get a banner. Just run the installer again.
 - It only talks to Open-Meteo (weather), ipapi.co (once, to guess your city), ESPN and Jolpica (cards, if you
   add any) and AdGuard DNS (if ad blocking is on).

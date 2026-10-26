@@ -629,14 +629,20 @@ final class Remote {
                 prefs.edit().putString("name", name.length() > 20 ? name.substring(0, 20) : name).apply();
                 return null;
             }
-            case "snow": {
-                File w = Wallpapers.current(app);
-                if (w == null) return "no wallpaper";
-                prefs.edit().putBoolean(Snow.key(w), on).apply();
+            case "fps":   // Frame Rate: 60 or 30
+                if (!v.matches("30|60")) return "bad value";
+                prefs.edit().putString("fps", v).apply();
                 return null;
-            }
-            case "icons":   // app icon brightness, %
-                try { prefs.edit().putInt("icons", Math.max(30, Math.min(100, Integer.parseInt(v)))).apply(); }
+            case "dockstyle": case "cardstyle":   // Glass or Floating
+                if (!v.matches("glass|float")) return "bad value";
+                prefs.edit().putString(k, v).apply();
+                return null;
+            case "fx":   // Weather effects: live, snow, rain or off
+                if (!v.matches("live|snow|rain|off")) return "bad value";
+                prefs.edit().putString("fx", v).apply();
+                return null;
+            case "icondim":   // Dim App Icons, %
+                try { prefs.edit().putInt("icondim", Math.max(0, Math.min(70, Integer.parseInt(v)))).apply(); }
                 catch (NumberFormatException e) { return "bad value"; }
                 return null;
             case "dim":
@@ -729,13 +735,16 @@ final class Remote {
 
         j.append(",\"settings\":{\"photo\":").append(prefs.getBoolean("photo", true))
                 .append(",\"dim\":").append(prefs.getInt("dim", 0))
-                .append(",\"icons\":").append(prefs.getInt("icons", 100))
+                .append(",\"icondim\":").append(Tile.iconDim(prefs))
                 .append(",\"night\":").append(prefs.getBoolean("night", true))
                 .append(",\"clock24\":").append(prefs.getBoolean("clock24", false))
                 .append(",\"cards_on\":").append(prefs.getBoolean("cards_on", true))
                 .append(",\"name\":").append(js(prefs.getString("name", "")))
                 .append(",\"city\":").append(js(prefs.getString("city", "")))
-                .append(",\"snow\":").append(Snow.on(prefs, Wallpapers.current(app)))
+                .append(",\"fx\":").append(js(prefs.getString("fx", "live")))
+                .append(",\"fps\":").append(js(prefs.getString("fps", "60")))
+                .append(",\"dockstyle\":").append(js(prefs.getString("dockstyle", "glass")))
+                .append(",\"cardstyle\":").append(js(prefs.getString("cardstyle", "glass")))
                 .append(",\"adblock\":").append(Tweaks.adblock(app))
                 .append(",\"fast\":").append(Tweaks.fast(app))
                 .append(",\"ambient\":").append(Tweaks.ambient(app))

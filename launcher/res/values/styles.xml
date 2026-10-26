@@ -10,5 +10,10 @@
         <item name="android:statusBarColor">@android:color/black</item>
         <item name="android:navigationBarColor">@android:color/black</item>
         <item name="android:defaultFocusHighlightEnabled">false</item>
+        <!-- the focus glow is the lifted tile's own shadow in its colour: mostly ambient, which spreads evenly
+             all round, not the spot shadow that falls down and away from a light above the screen (it left
+             Netflix's red pooled at its bottom left). Free: the GPU draws the shadow either way. -->
+        <item name="android:ambientShadowAlpha">0.8</item>
+        <item name="android:spotShadowAlpha">0.1</item>
     </style>
 </resources>

@@ -2,6 +2,7 @@ package com.joe.home;
 
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -19,6 +20,7 @@ import android.graphics.drawable.LayerDrawable;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.Interpolator;
@@ -50,12 +52,38 @@ final class Tile extends FrameLayout {
     TextView label;          // optional name under the card, shown on focus
     FocusListener listener;
 
-    // MonolithicOS Settings > App icons: how much unfocused app cards are darkened, 0..1 (glare on black)
+    // Card Style > Floating: the card's text gets a soft shadow to read on the wallpaper. A blurred shadow is
+    // cached at one size, so while a card grew on focus it was re-blurred on the CPU every frame (57 ms frames,
+    // 68% jank). Focused, the card has its glass behind the text instead; the shadow comes back once settled.
+    boolean shadowText;
+    private final Runnable reshadow = this::textShadows;
+
+    void textShadows() {
+        boolean on = shadowText && !hasFocus();
+        float d = getResources().getDisplayMetrics().density;
+        shadow(this, on ? 10 * d : 0, on ? d : 0);
+    }
+
+    private static void shadow(View v, float radius, float dy) {
+        if (v instanceof TextView) {
+            ((TextView) v).setShadowLayer(radius, 0, dy, radius > 0 ? 0x8C000000 : 0);
+        } else if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) shadow(g.getChildAt(i), radius, dy);
+        }
+    }
+
+    // MonolithicOS Settings > Dim App Icons: how much app cards are darkened, 0..1 (glare on black)
     static float dim;
+
+    /** Dim App Icons in %, 0..70 (1.0 kept a brightness instead, "icons" 30..100). */
+    static int iconDim(SharedPreferences p) {
+        return p.contains("icondim") ? p.getInt("icondim", 0) : 100 - p.getInt("icons", 100);
+    }
 
     private final View sheen;
     private final LayerDrawable shine;
-    private final float scale, lift;
+    private final float scale, radius;
     private ValueAnimator shineAnim, wobble, shadeAnim;
     private float shade = -1f;   // darkening drawn over the card now; -1 = at rest, follow dim
     private boolean moving;
@@ -67,7 +95,7 @@ final class Tile extends FrameLayout {
         this.accent = accent;
         this.accent2 = accent2;
         this.scale = scale;
-        this.lift = radius * 0.75f;
+        this.radius = radius;
         setFocusable(true);
         setClickable(true);
         setLongClickable(true);
@@ -75,6 +103,7 @@ final class Tile extends FrameLayout {
         setOutlineProvider(new ViewOutlineProvider() {
             @Override public void getOutline(View v, Outline o) {
                 o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), radius);
+                if (v.getBackground() instanceof Glass) o.setAlpha(((Glass) v.getBackground()).shadow());
             }
         });
         setClipToOutline(true);
@@ -126,7 +155,7 @@ final class Tile extends FrameLayout {
         @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
 
-    /** The darkening over an app card (not on the focused one), above the art and under the gloss. */
+    /** The darkening over an app card, above the art and under the gloss. */
     @Override
     protected void dispatchDraw(Canvas c) {
         super.dispatchDraw(c);
@@ -134,11 +163,20 @@ final class Tile extends FrameLayout {
         if (s > 0.004f) c.drawColor(Color.argb(Math.round(255 * s), 0, 0, 0));
     }
 
-    private float rest() {
-        return pkg != null && !hasFocus() ? dim : 0f;
+    /**
+     * How high it lifts on focus, and so how far its glow spreads: app tiles high for a big colour glow, cards
+     * low. Glass cards lifted that high cast two big shadows under their frost while one rose and the other
+     * settled: 16 ms of GPU a frame against 8.
+     */
+    private float lift() {
+        return radius * (pkg != null ? 1.6f : 0.75f);
     }
 
-    /** Fade the darkening to where it belongs now: none while focused, {@link #dim} otherwise. */
+    private float rest() {
+        return pkg != null ? dim : 0f;
+    }
+
+    /** Fade the darkening to where it belongs now ({@link #dim} on app cards, after a settings change). */
     void settleShade() {
         float to = rest(), from = shade >= 0 ? shade : to;
         if (shadeAnim != null) shadeAnim.cancel();
@@ -191,6 +229,12 @@ final class Tile extends FrameLayout {
     @Override
     protected void onFocusChanged(boolean gained, int direction, Rect previous) {
         super.onFocusChanged(gained, direction, previous);
+        if (getBackground() instanceof Glass) ((Glass) getBackground()).focus(gained);   // Card Style > Floating
+        if (shadowText) {   // off at once while it grows, back after it has shrunk back (see shadowText)
+            removeCallbacks(reshadow);
+            if (gained) textShadows();
+            else postDelayed(reshadow, 260);
+        }
         if (moving) return;   // move mode keeps its own pose while the dock reorders
         animate().cancel();
         if (gained) {
@@ -199,7 +243,7 @@ final class Tile extends FrameLayout {
             setOutlineAmbientShadowColor(accent);
             setRotationY(direction == FOCUS_RIGHT ? TILT : direction == FOCUS_LEFT ? -TILT : 0f);
             setRotationX(direction == FOCUS_DOWN ? -TILT * 0.7f : direction == FOCUS_UP ? TILT * 0.7f : 0f);
-            animate().scaleX(scale).scaleY(scale).rotationX(0f).rotationY(0f).translationZ(lift)
+            animate().scaleX(scale).scaleY(scale).rotationX(0f).rotationY(0f).translationZ(lift())
                     .setInterpolator(SPRING).setDuration(540).start();
             sweep(direction == FOCUS_LEFT ? -1 : 1);
             if (listener != null) listener.onTileFocused(this, direction);
@@ -222,7 +266,7 @@ final class Tile extends FrameLayout {
         if (wobble != null) wobble.cancel();
         animate().cancel();
         if (on) {
-            animate().scaleX(scale * 1.07f).scaleY(scale * 1.07f).translationZ(lift * 2.2f)
+            animate().scaleX(scale * 1.07f).scaleY(scale * 1.07f).translationZ(lift() * 2.2f)
                     .setInterpolator(SPRING).setDuration(360).start();
             wobble = ValueAnimator.ofFloat(-1.3f, 1.3f);
             wobble.setDuration(150);
@@ -232,7 +276,7 @@ final class Tile extends FrameLayout {
             wobble.start();
         } else {
             setRotation(0f);
-            animate().scaleX(scale).scaleY(scale).translationZ(lift)
+            animate().scaleX(scale).scaleY(scale).translationZ(lift())
                     .setInterpolator(SPRING).setDuration(360).start();
         }
     }
