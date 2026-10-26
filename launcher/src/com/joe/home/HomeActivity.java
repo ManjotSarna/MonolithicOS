@@ -380,7 +380,9 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         if (SystemClock.uptimeMillis() - pausedAt < 500) goTop();
         // Home pressed in an app: the intro covers Home coming back, which then fades in under it
         else if (!resumed && Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(Intent.CATEGORY_HOME)) {
-            intro();
+            // Back from an input the TV also drops the HDMI picture and puts its panel back to 60 Hz (from a PC's
+            // 144 in Game mode, say), blanking the screen about 0.6 to 1.2 s after the press: the name waits it out
+            intro(Inputs.LIVE_TV.equals(TypeHelper.lastApp) ? 1500 : 0);
             goTop();
         }
     }
@@ -984,6 +986,11 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
      * added meanwhile lands on top.
      */
     private void intro() {
+        intro(0);
+    }
+
+    /** hold: ms of black before the name, at least (see onNewIntent). */
+    private void intro(long hold) {
         if (curtain != null) return;   // already playing
         curtain = new FrameLayout(this);
         curtain.setBackgroundColor(Color.BLACK);
@@ -996,14 +1003,15 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         // Start once the TV is drawing smoothly: coming back from YouTube, it tears its player down for the first
         // half second (frames of 30-140 ms, with a few smooth ones between), and an animation started then
         // stutters. Ten frames in a row on time, or a second at most; from a light app that's a sixth of a second.
-        long until = SystemClock.uptimeMillis() + 1000;
+        long from = SystemClock.uptimeMillis() + hold, until = from + 1000;
         android.view.Choreographer.getInstance().postFrameCallback(new android.view.Choreographer.FrameCallback() {
             long last;
             int smooth;
             @Override public void doFrame(long nanos) {
                 smooth = last != 0 && nanos - last < 20_000_000L ? smooth + 1 : 0;
                 last = nanos;
-                if (smooth >= 10 || SystemClock.uptimeMillis() > until) playIntro(word);
+                long now = SystemClock.uptimeMillis();
+                if (smooth >= 10 && now >= from || now > until) playIntro(word);
                 else android.view.Choreographer.getInstance().postFrameCallback(this);
             }
         });

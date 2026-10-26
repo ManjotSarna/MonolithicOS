@@ -9,12 +9,15 @@ import android.view.accessibility.AccessibilityNodeInfo;
 
 /**
  * The phone page's hands on the TV: D-pad, Back and Home as accessibility actions, and typing into
- * whatever text box has focus. It never filters keys, so the real remote (held
+ * whatever text box has focus, and notes which app was last on screen (so Home knows when it's back from
+ * an HDMI input). It never filters keys, so the real remote (held
  * volume included) is untouched. Being bound also keeps the phone page's server running while an
  * app is on screen.
  */
 public final class TypeHelper extends AccessibilityService {
     private static volatile TypeHelper live;
+    // the last app on screen other than Home (window changes only), so Home knows it's coming back from an input
+    static volatile String lastApp;
 
     @Override
     protected void onServiceConnected() {
@@ -72,6 +75,11 @@ public final class TypeHelper extends AccessibilityService {
         return ok ? "ok" : "none";
     }
 
-    @Override public void onAccessibilityEvent(AccessibilityEvent event) { }
+    @Override
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || event.getPackageName() == null) return;
+        String pkg = event.getPackageName().toString();
+        if (!pkg.equals(getPackageName()) && !pkg.equals("com.android.systemui")) lastApp = pkg;
+    }
     @Override public void onInterrupt() { }
 }

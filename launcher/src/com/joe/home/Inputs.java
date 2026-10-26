@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
 
 /** HDMI inputs, shared by Home and the phone page. */
 final class Inputs {
-    private static final String LIVE_TV = "com.tcl.tv";
+    static final String LIVE_TV = "com.tcl.tv";   // shows HDMI and live TV
     private static final Pattern HW = Pattern.compile("HW(\\d+)$");
 
     private Inputs() { }
@@ -67,6 +67,7 @@ final class Inputs {
 
     /** Straight to TCL's TV app on that input, no chooser. False if nothing would take it. */
     static boolean switchTo(Context c, String id) {
+        TypeHelper.lastApp = LIVE_TV;   // known even with the phone remote's helper off
         Uri uri = TvContract.buildChannelUriForPassthroughInput(id);
         Intent view = new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "vnd.android.cursor.item/channel")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

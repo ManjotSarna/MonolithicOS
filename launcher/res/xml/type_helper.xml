@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- No key filter (that's what stops held volume ramping on this TV), and only the rarest event
-     type, so apps send it next to nothing. Window content is for finding the focused text box. -->
+<!-- No key filter (that's what stops held volume ramping on this TV), and only rare events: announcements,
+     and a window coming up (so Home knows the last app was an HDMI input). Window content is for finding the focused text box. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeAnnouncement"
+    android:accessibilityEventTypes="typeAnnouncement|typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:canRetrieveWindowContent="true"
     android:notificationTimeout="0"
