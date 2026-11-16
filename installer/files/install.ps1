@@ -197,6 +197,9 @@ function Install-App {
     Tv cmd appops set $Pkg AUTO_START allow | Out-Null
     Tv cmd appops write-settings | Out-Null
     Tv settings put secure screensaver_components "$Pkg/$Pkg.AmbientDream" | Out-Null
+    # Android forgets an "Always allow" for debugging after 7 days unused, and then MonolithicOS's own setup,
+    # Task Manager and safe mode's way back would wait on the TV asking again: never expire (0)
+    Tv settings put global adb_allowed_connection_time 0 | Out-Null
     A11y "$Pkg/$Pkg.TypeHelper" "on"
     Ok "screensaver, Now Playing, phone remote and settings access set up"
 }
@@ -304,6 +307,7 @@ function Do-Uninstall {
     foreach ($s in "window_animation_scale", "transition_animation_scale", "animator_duration_scale") {
         Tv settings put global $s 1 | Out-Null
     }
+    Tv settings delete global adb_allowed_connection_time | Out-Null
     Ok "apps, ad blocking and animations back to normal"
     Restore-Home
     Ok "Google's Home screen is back"

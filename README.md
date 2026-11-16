@@ -58,7 +58,9 @@ launcher isn't running your TV in the background anymore.
 - **Your apps, your way.** Hide any app, rename it, give it your own picture, or lock it behind a parental PIN.
   Make your own rows (Streaming, Sports, Kids) and folders, and a Recent row keeps your last few apps close.
 - **Phone remote.** Touchpad, type into the TV's search boxes, open apps, switch inputs, change settings,
-  sort out your apps, and back up every setting to one file for a new TV. Android app included.
+  sort out your apps, and back up every setting to one file for a new TV. Android app included: its power
+  button turns the TV on and off, it finds the TV again if your router gives it a new address, and it updates
+  itself from the TV.
 - **Settings on the TV.** Ad blocking for the whole TV, dim the wallpaper or the app icons, night mode,
   animation speed, 30 fps mode if your TV's on the slow side, all of it. The screensaver is MonolithicOS's own:
   a big thin clock over your wallpaper.
@@ -144,6 +146,11 @@ On Android, tap **Get** up top for the app. That's also where you set your name,
 - The weather effects can be turned off in MonolithicOS Settings or from your phone. For the right weather,
   give your city with its region if it shares a name (London, Ontario).
 - If a TV update turns Google's stuff back on, you'll get a banner. Just run the installer again.
+- The phone app's power button switches the TV on through Google's own remote service, which still answers
+  while the TV's off. Opening the app never switches the TV on by itself.
+  MonolithicOS pairs with it by itself, once, a few seconds after Home first comes up (the TV shows a code for
+  a second), and every phone you sign in can then use it. It can't wake a TV that's unplugged or set to Low
+  energy (Settings > System > Power & Energy).
 - It only talks to Open-Meteo (weather), ipapi.co (once, to guess your city), ESPN and Jolpica (cards, if you
   add any) and AdGuard DNS (if ad blocking is on).
 

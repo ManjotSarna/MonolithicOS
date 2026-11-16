@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- No key filter (that's what stops held volume ramping on this TV), and only rare events: announcements,
-     and a window coming up (so Home knows the last app was an HDMI input). Window content is for finding the focused text box. -->
+     and a window coming up (so Home knows the last app was an HDMI input). Window content is for finding the focused text box,
+     and every window (only looked at while pairing) for reading the pairing code Google's remote service shows. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeAnnouncement|typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:canRetrieveWindowContent="true"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows"
     android:notificationTimeout="0"
     android:description="@string/type_helper" />

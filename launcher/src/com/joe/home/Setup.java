@@ -92,7 +92,8 @@ final class Setup {
                 + "pm grant " + PKG + " android.permission.WRITE_SECURE_SETTINGS; "
                 + "cmd appops set " + PKG + " SYSTEM_ALERT_WINDOW allow; "
                 + "cmd appops set " + PKG + " AUTO_START allow; cmd appops write-settings; "
-                + "settings put secure screensaver_components " + PKG + "/" + PKG + ".AmbientDream");
+                + "settings put secure screensaver_components " + PKG + "/" + PKG + ".AmbientDream; "
+                + "settings put global " + Tweaks.ADB_EXPIRY + " 0");   // see Tweaks.keepDebugging
         String svc = PKG + "/" + PKG + ".TypeHelper", cur = a.shell("settings get secure enabled_accessibility_services");
         if (cur.equals("null")) cur = "";
         if (!cur.contains(svc)) {
@@ -157,6 +158,7 @@ final class Setup {
             for (String p : new String[]{"window_animation_scale", "transition_animation_scale", "animator_duration_scale"}) {
                 cmd.append("settings put global ").append(p).append(" 1; ");
             }
+            cmd.append("settings delete global " + Tweaks.ADB_EXPIRY + "; ");
             a.shell(cmd.toString());
             restoreHome(a);
             a.shell("pm uninstall " + GUARD + " >/dev/null 2>&1");   // Google's home is back: not needed

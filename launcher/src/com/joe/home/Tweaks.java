@@ -21,6 +21,7 @@ final class Tweaks {
     static final String AMBIENT = "com.joe.home/com.joe.home.AmbientDream";
     static final String GOOGLE_DREAM = "com.google.android.apps.tv.dreamx/.service.Backdrop";
     static final String TYPE_HELPER = "com.joe.home/com.joe.home.TypeHelper";
+    static final String ADB_EXPIRY = "adb_allowed_connection_time";
     private static final String[] SCALES = {Settings.Global.WINDOW_ANIMATION_SCALE,
             Settings.Global.TRANSITION_ANIMATION_SCALE, Settings.Global.ANIMATOR_DURATION_SCALE};
 
@@ -46,6 +47,19 @@ final class Tweaks {
 
     static void setFast(Context c, boolean on) {
         for (String k : SCALES) Settings.Global.putFloat(c.getContentResolver(), k, on ? 0.5f : 1f);
+    }
+
+    /**
+     * Android forgets an "Always allow" for debugging after 7 days without a connection; then MonolithicOS's
+     * own setup, Task Manager and safe mode's way back to Google TV would all wait on the TV asking again,
+     * which nobody sees coming. 0: never forget. Set at every Home start, so TVs set up before 1.5.1 get it too.
+     */
+    static void keepDebugging(Context c) {
+        if (!allowed(c)) return;
+        try {
+            ContentResolver cr = c.getContentResolver();
+            if (Settings.Global.getLong(cr, ADB_EXPIRY, -1) != 0) Settings.Global.putLong(cr, ADB_EXPIRY, 0);
+        } catch (RuntimeException ignored) { }   // a firmware that won't let apps touch it: the installers set it too
     }
 
     static boolean ambient(Context c) {

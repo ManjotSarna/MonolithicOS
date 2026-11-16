@@ -42,6 +42,9 @@ import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
 import android.media.tv.TvInputInfo;
 import android.media.tv.TvInputManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -164,6 +167,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     private final List<TeamCard> teams = new ArrayList<>();   // the teams picked on the phone page
     private boolean f1Wanted;
     private boolean resumed;
+    static volatile boolean front;   // Home is what's on screen (the phone app only pairs then)
     // F1 Next up
     private static final int F1_RED = 0xFFE10600;
     private F1.Data f1Data;
@@ -202,6 +206,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
 
         prefs = getSharedPreferences("home", MODE_PRIVATE);
         forgetOld();
+        Tweaks.keepDebugging(this);
         readStyles();
         applyFps();
         prefs.registerOnSharedPreferenceChangeListener(prefsChanged);
@@ -331,6 +336,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
     protected void onResume() {
         super.onResume();
         if (safe) return;
+        watchNetwork(true);   // before the refreshes below: they skip while there's no network
         greeting.setText(greetingText());
         if (prefs.getBoolean("photo", true) && !backdrop.hasPhoto() && !loading) {   // never made it: try again
             lookTries = 0;
@@ -348,6 +354,9 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
             Tweaks.setService(this, Tweaks.TYPE_HELPER, true);
         }
         resumed = true;
+        front = true;
+        handler.removeCallbacks(wakeCheck);
+        handler.postDelayed(wakeCheck, 8000);   // after the intro, once Home has settled
         updateSnow();
         updateF1();
         refreshF1();
@@ -367,6 +376,9 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         if (menu != null) closeMenu(false);
         handler.removeCallbacks(toneTick);
         resumed = false;
+        front = false;
+        watchNetwork(false);
+        handler.removeCallbacks(wakeCheck);
         snow.setFalling(false);
         handler.removeCallbacks(f1Tick);
         for (TeamCard t : teams) handler.removeCallbacks(t.tick);
@@ -1406,7 +1418,8 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
         out.add(new Choice("Phone Remote", false, new String[]{"On", "Off"},
                 () -> prefs.getBoolean("remote", true) ? 0 : 1, i -> setRemote(i == 0))
                 .note(() -> prefs.getBoolean("remote", true)
-                        ? Remote.address() + "  ·  PIN " + Remote.pin(this) : "Phone page and keyboard off"));
+                        ? Remote.address() + "  ·  PIN " + Remote.pin(this)
+                        + (PhoneWake.ready(this) ? "  ·  Turns the TV on" : "") : "Phone page and keyboard off"));
         return out;
     }
 
@@ -2349,7 +2362,84 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
 
     // ---- weather ---------------------------------------------------------------------------
 
+    // ---- the phone app switching the TV on (PhoneWake) ---------------------------------------
+
+    private final Runnable wakeCheck = () -> {
+        if (resumed && prefs.getBoolean("remote", true)) new Thread(() -> PhoneWake.check(this), "phone-wake").start();
+    };
+
+    // ---- the network coming back -----------------------------------------------------------
+
+    private ConnectivityManager.NetworkCallback netWatch;
+    private boolean online = true;
+
+    /**
+     * While Home is on screen only: when the network comes back (the TV just started and Wi-Fi isn't in yet,
+     * the router restarted), the weather, F1 and team cards fetch straight away instead of waiting out their
+     * 30 minutes. And a refresh with no network doesn't try at all, so it doesn't count as the one for those 30.
+     */
+    private void watchNetwork(boolean on) {
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+        if (cm == null) return;
+        if (!on) {
+            if (netWatch != null) try { cm.unregisterNetworkCallback(netWatch); } catch (RuntimeException ignored) { }
+            netWatch = null;
+            handler.removeCallbacks(backOnline);
+            return;
+        }
+        if (netWatch != null) return;
+        try {
+            NetworkCapabilities caps = cm.getNetworkCapabilities(cm.getActiveNetwork());
+            online = caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+        } catch (RuntimeException e) {   // can't tell: behave as before, never crash Home over it
+            online = true;
+            return;
+        }
+        netWatch = new ConnectivityManager.NetworkCallback() {
+            boolean validated;
+            @Override public void onCapabilitiesChanged(Network n, NetworkCapabilities c) {
+                if (!c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return;
+                boolean v = c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+                if (!online) {   // just back: its DNS can take a moment, so a breath first (or as soon as it's checked)
+                    online = true;
+                    handler.removeCallbacks(backOnline);
+                    handler.postDelayed(backOnline, v ? 0 : 2500);
+                } else if (v && !validated) {
+                    handler.removeCallbacks(backOnline);
+                    handler.post(backOnline);
+                }
+                validated = v;
+            }
+            @Override public void onLost(Network n) {
+                online = false;
+                validated = false;
+            }
+        };
+        try {
+            cm.registerDefaultNetworkCallback(netWatch, handler);
+        } catch (RuntimeException e) {
+            netWatch = null;
+            online = true;   // can't tell: behave as before
+        }
+    }
+
+    private final Runnable backOnline = () -> {
+        if (!resumed) return;
+        android.util.Log.i("MonolithicOS", "network back: refreshing the cards");
+        // only what's missing: the weather if it's old, F1 and teams by their own "due" rules
+        if (System.currentTimeMillis() - prefs.getLong("wcodeAt", 0) > 30 * 60_000L) weatherAt = 0;
+        f1FetchAt = 0;
+        refreshWeather();
+        refreshF1();
+        for (TeamCard t : teams) {
+            t.fetchAt = 0;
+            t.liveAt = 0;
+            t.refresh();
+        }
+    };
+
     private void refreshWeather() {
+        if (!online) return;
         long now = SystemClock.elapsedRealtime();
         if (weatherAt != 0 && now - weatherAt < 30 * 60_000L) return;   // at most every 30 min
         weatherAt = now;
@@ -2781,7 +2871,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
 
     /** Every 6 hours, or sooner when a race has finished and its podium isn't in yet; never twice in 30 min. */
     private void refreshF1() {
-        if (!f1Wanted) return;
+        if (!f1Wanted || !online) return;
         long now = System.currentTimeMillis();
         if (f1FetchAt != 0 && SystemClock.elapsedRealtime() - f1FetchAt < 30 * 60_000L) return;
         boolean due = now - prefs.getLong("f1at", 0) > 6 * 3_600_000L;
@@ -2985,7 +3075,7 @@ public final class HomeActivity extends Activity implements Tile.FocusListener {
          * hour after each final whistle for the result and the table; never twice in 30 minutes.
          */
         void refresh() {
-            if (data == null || gone) return;
+            if (data == null || gone || !online) return;
             long now = System.currentTimeMillis(), up = SystemClock.elapsedRealtime();
             for (Team.Match m : data.matches) {
                 boolean on = !m.done() && now >= m.start - 5 * 60_000L && now < m.start + 4 * 3_600_000L;

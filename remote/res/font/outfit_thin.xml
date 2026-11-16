@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Outfit at weight 200. One family per weight, built once per process (per CleanYourTV's note:
+     fontVariationSettings on each TextView rebuilds the variable font for every view). -->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android">
+    <font android:font="@font/outfit" android:fontStyle="normal" android:fontWeight="200"
+        android:fontVariationSettings="'wght' 200" />
+</font-family>

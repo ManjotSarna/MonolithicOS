@@ -354,6 +354,11 @@ final class Remote {
                     "Content-Disposition: attachment; filename=\"MonolithicOS.apk\"", "Cache-Control: no-cache");
             return;
         }
+        if ("/app/version".equals(p)) {   // which phone app this TV carries, so the app can offer to update itself
+            Log.i("MonolithicOS", "phone app " + r.q("v") + " checked for an update (this TV carries " + phoneAppVersion() + ")");
+            send(out, 200, "application/json", "{\"code\":" + phoneAppVersion() + "}", "Cache-Control: no-cache");
+            return;
+        }
         if ("/sw.js".equals(p)) {
             send(out, 200, "text/javascript", SW, "Cache-Control: no-cache");
             return;
@@ -385,6 +390,7 @@ final class Remote {
             return;
         }
         if (!authed(r)) {
+            if (p.equals("/api/wake")) Log.i("MonolithicOS", "phone wake: phone app " + r.q("v") + " isn't signed in");
             send(out, 401, "application/json", "{\"error\":\"pin\"}");
             return;
         }
@@ -399,6 +405,15 @@ final class Remote {
             case "/api/thumb": image(out, "thumb:" + r.q("path") + new File(r.q("path")).lastModified(),
                     () -> thumb(r.q("path")), "image/jpeg"); return;
             case "/api/teams": send(out, 200, "application/json", Team.search(app, r.q("q"))); return;
+            case "/api/wake": {   // the phone app switching the TV on: the identity Google's remote service knows (PhoneWake)
+                if ("1".equals(r.q("forgot"))) {   // the phone was turned away with it: pair again
+                    Log.i("MonolithicOS", "phone wake: phone app " + r.q("v") + " says Google's remote service forgot MonolithicOS");
+                    PhoneWake.forget(app);
+                }
+                Log.i("MonolithicOS", "phone wake: phone app " + r.q("v") + " collected it (" + (PhoneWake.ready(app) ? "ready" : "not paired yet") + ")");
+                send(out, 200, "application/json", PhoneWake.identity(app), "Cache-Control: no-store");
+                return;
+            }
             case "/api/backup": {   // every setting as one file (not the PINs); your pictures and photos stay on the TV
                 send(out, 200, "application/json", backup().getBytes(StandardCharsets.UTF_8),
                         "Content-Disposition: attachment; filename=\"MonolithicOS-backup.json\"");
@@ -619,6 +634,24 @@ final class Remote {
         return phoneApp;
     }
 
+    private static long phoneAppVersion = -1;
+
+    /** The carried phone app's version code (read from the APK once), or 0 if it can't be read. */
+    private static synchronized long phoneAppVersion() {
+        if (phoneAppVersion >= 0) return phoneAppVersion;
+        phoneAppVersion = 0;
+        File f = new File(app.getCacheDir(), "phone-app.apk");
+        try {
+            try (FileOutputStream o = new FileOutputStream(f)) { o.write(phoneApp()); }
+            android.content.pm.PackageInfo pi = app.getPackageManager().getPackageArchiveInfo(f.getPath(), 0);
+            if (pi != null) phoneAppVersion = pi.getLongVersionCode();
+        } catch (IOException | RuntimeException ignored) {
+        } finally {
+            f.delete();
+        }
+        return phoneAppVersion;
+    }
+
     private static byte[] page() throws IOException {
         if (page == null) {
             try (InputStream in = app.getResources().openRawResource(R.raw.remote)) {
@@ -654,6 +687,9 @@ final class Remote {
                 try { app.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
                 catch (RuntimeException e) { return "blocked"; }
                 return null;
+            case "power":   // off, from a browser (the app goes through Google's remote service, which won't take
+                            // the TV's own connections), with the TV's own debugging: the same standby as its remote
+                return Setup.key(app, KeyEvent.KEYCODE_POWER) ? null : "blocked";
             default:
                 if (TypeHelper.press(k)) return null;
                 if (TypeHelper.on()) return "unknown";
